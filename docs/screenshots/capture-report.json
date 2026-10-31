@@ -1,0 +1,36 @@
+{
+  "platform": "win32",
+  "qt_platform": "offscreen",
+  "screenshots": [
+    {
+      "file": "ai-rename.png",
+      "width": 700,
+      "height": 720,
+      "bytes": 121797,
+      "sample_colors": 60
+    },
+    {
+      "file": "settings-background.png",
+      "width": 900,
+      "height": 740,
+      "bytes": 53672,
+      "sample_colors": 22
+    },
+    {
+      "file": "settings-pet.png",
+      "width": 900,
+      "height": 740,
+      "bytes": 124548,
+      "sample_colors": 43
+    },
+    {
+      "file": "main-window.png",
+      "width": 1360,
+      "height": 820,
+      "bytes": 678044,
+      "sample_colors": 205
+    }
+  ],
+  "errors": {},
+  "disclaimer": "Actual PySide6 widgets, but demo tasks and candidate titles."
+}
