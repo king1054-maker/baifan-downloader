@@ -1,27 +1,51 @@
-# 白饭下载器 / BaiFan Downloader
+# 白饭下载器 · BaiFan Downloader
 
-> **当前状态：私有预发布仓库（Private / Staging）。** 目前尚未导入完整源代码，请勿将本仓库设为 Public 或创建正式安装包 Release。
+> **v0.10.103 · 已导入源码 · 私有预发布仓库（Private）**  
+> Python 源码与必要素材已上传，GitHub Actions 源码完整性检查通过。**尚未公开发布 Windows 安装包，且未完成独立 Windows 11 实机验收。**
 
-白饭下载器是一款面向 Windows 的可定制下载管理器，基于 **aria2** 下载引擎与 **PySide6** 桌面界面，包含 HTTP/FTP、BT/磁力下载、AI 辅助改名、桌宠、背景裁切及自定义完成提示音等功能。
+白饭下载器是一款面向 Windows 的可定制下载工具，以 **aria2** 为下载引擎、**PySide6** 为界面框架，支持 HTTP/FTP 下载、BT / 磁力链接、AI 辅助改名、本地 API、蓝鲸桌宠、背景裁切和自定义提示音。
 
-- 目标源码版本：**v0.10.103**
-- GitHub 账号：**king1054-maker**
-- 作者 / 商业授权联系：**meetmusk@icloud.com**
-- 许可方向：**PolyForm Noncommercial 1.0.0**，即源码可见、允许符合许可的非商业修改与再分发、商业用途需另行授权；**不是 OSI 定义的开放源代码许可**。
-- 第三方依赖：PySide6/Qt、aria2 等遵循各自许可证，不能把整个软件简单认作同一种许可。
+## 从源码运行（Windows 11）
 
-## 发布素材决定
+1. 安装 **Python 3.12**，获取本仓库源码。
+2. 在源码根目录建立虚拟环境并安装依赖：
+   ```powershell
+   py -3.12 -m venv .venv
+   .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+   ```
+3. 从可信的 aria2 项目发行渠道自行获取 Windows 版 `aria2c.exe`，放到 `bin/aria2c.exe`（项目源码仓库不捆绑该可执行文件）。
+4. 启动：
+   ```powershell
+   .\.venv\Scripts\python.exe run.py
+   ```
+5. 软件的 AI API Key 由用户在本地设置，不得提交至仓库。
 
-- 横版演示背景：蓝鲸主题 **16:9**。
-- 竖版演示背景：作者日本实拍的日吉大社红叶鸟居照片，裁切为 **9:16**。旧《原神》同人图不随公开版本发布。
-- 默认提示音保留作者调配的 `ciallo.wav` 和 `ciallo_alt2.wav`，其中 `ciallo.wav` 为默认音效，默认音量 60%。两段声音的**底层原始采样再分发授权需核验**，未确认前只保留于私有预发布工程。
+这是源码运行指南，**不代表所有功能已经完成实机测试**。安装包构建所需事项见 `PUBLISH_GUIDE.md` 和 `RELEASE_GATES.md`。
 
-## 待完成
+## 版权与使用许可
 
-1. 在此私有仓库导入经过整理的 v0.10.103 **全部源代码和必要素材**，不上传旧版 EXE、缓存、密钥、用户数据。
-2. 检查图片和音效来源、第三方组件许可证，补齐 LICENSE、NOTICE、ASSET_NOTICE、THIRD_PARTY_NOTICES。
-3. 执行 GitHub CI 语法与敏感信息检查；Windows 11 端另行进行功能和构建验收。
-4. 决定公开源码版本是否捆绑两段录音；未经核验时保留代码逻辑而不分发音频。
-5. 最终确认后才将仓库从 **Private** 改为 **Public**。源代码公开与 EXE 发行分开处理。
+- **作者及商业授权联系**：meetmusk@icloud.com
+- **作者原创代码**：PolyForm Noncommercial 1.0.0。允许符合许可的非商业使用、个人修改和非商业再分发；商业用途需另行取得许可。
+- **这属于 source-available（源码可见），不是 OSI 定义的开源许可证。**
+- **第三方代码与组件**：PySide6/Qt、aria2 等遵循各自的许可证，不能通过本项目 LICENSE 改写其条款。
 
-请参阅本仓库的 **发布核验 Issue**。尚未完成的项目不应被当作已经通过测试或授权审核。
+## 示例素材
+
+- **16:9 横版**：原创蓝鲸主题演示背景。
+- **9:16 竖版**：作者在日本拍摄的日吉大社红叶鸟居照片（由原图裁切），用于展示竖图与可选区域。
+- 桌宠与图标：作者设计和 ChatGPT 辅助生成的原创角色素材。
+- **Ciallo 默认提示音**：代码保留了 `ciallo.wav` 和 `ciallo_alt2.wav` 的选择及默认音量 60%，本次仓库导入**未包含这两段录音文件**，因为底层采样的再分发权尚待确认；缺少时按程序逻辑退回自带提示音。原开发工程与私有候选包保有原始调配版本。
+
+本仓库未导入旧安装包、EXE/DLL、用户配置、密钥、历史同人背景，也暂未导入需要单独复核的旧文档截图。
+
+## 当前验收状态
+
+- [x] v0.10.103 Python 源码及必要原素材导入 GitHub
+- [x] GitHub Actions `Source integrity` 通过
+- [x] 非商业许可、版权、安全与贡献说明已建立
+- [ ] 确认提示音底层采样的公发授权
+- [ ] 独立 Windows 11 构建、安装与功能测试
+- [ ] 完成第三方组件及二进制分发合规复核
+- [ ] 仓库所有者批准后从 Private 改为 Public
+
+查看 [发布核验任务](../../issues/1)、[版权声明](ASSET_NOTICE.md)、[第三方许可](THIRD_PARTY_NOTICES.md)、[安全报告](SECURITY.md)。
