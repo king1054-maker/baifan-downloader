@@ -1,0 +1,48 @@
+name: BaiFan source checks
+
+on:
+  push:
+    paths:
+      - "app/**"
+      - "tools/**"
+      - "packaging/**"
+      - "run.py"
+      - "requirements*.txt"
+      - "assets/backgrounds/**"
+      - "assets/sounds/**"
+      - ".github/workflows/source-check.yml"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  static-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Source and license audit
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import ast
+          root = Path(".")
+          required = ["run.py", "app/engine.py", "app/ui/main_window.py", "requirements.txt", "LICENSE", "ASSET_NOTICE.md", "NOTICE", "THIRD_PARTY_NOTICES.md"]
+          missing = [name for name in required if not (root / name).exists()]
+          if missing:
+              raise SystemExit(f"Missing required source files: {missing}")
+          files = list(root.glob("app/**/*.py")) + list(root.glob("tools/**/*.py")) + list(root.glob("packaging/**/*.py")) + [root / "run.py"]
+          for source in files:
+              if source.is_file():
+                  ast.parse(source.read_text(encoding="utf-8-sig"), filename=str(source))
+          if any(root.rglob("aria2c.exe")):
+              raise SystemExit("Do not commit bundled aria2c.exe to source repository")
+          if any(root.rglob("*.pfx")) or any(root.rglob("*.pem")):
+              raise SystemExit("Unexpected private-key/certificate file")
+          backgrounds=list((root/"assets/backgrounds").glob("*.jpg"))
+          if len(backgrounds) < 2:
+              raise SystemExit("Missing 16:9 / 9:16 backgrounds")
+          print(f"Checked {len(files)} Python paths, {len(backgrounds)} example backgrounds")
+          PY
