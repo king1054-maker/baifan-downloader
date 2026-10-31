@@ -1,2 +1,27 @@
-# baifan-downloader
-BaiFan Downloader — A customizable Windows download manager powered by aria2, featuring BT/Magnet downloads, AI-assisted file renaming, and a desktop pet.
+# 白饭下载器 / BaiFan Downloader
+
+> **当前状态：私有预发布仓库（Private / Staging）。** 目前尚未导入完整源代码，请勿将本仓库设为 Public 或创建正式安装包 Release。
+
+白饭下载器是一款面向 Windows 的可定制下载管理器，基于 **aria2** 下载引擎与 **PySide6** 桌面界面，包含 HTTP/FTP、BT/磁力下载、AI 辅助改名、桌宠、背景裁切及自定义完成提示音等功能。
+
+- 目标源码版本：**v0.10.103**
+- GitHub 账号：**king1054-maker**
+- 作者 / 商业授权联系：**meetmusk@icloud.com**
+- 许可方向：**PolyForm Noncommercial 1.0.0**，即源码可见、允许符合许可的非商业修改与再分发、商业用途需另行授权；**不是 OSI 定义的开放源代码许可**。
+- 第三方依赖：PySide6/Qt、aria2 等遵循各自许可证，不能把整个软件简单认作同一种许可。
+
+## 发布素材决定
+
+- 横版演示背景：蓝鲸主题 **16:9**。
+- 竖版演示背景：作者日本实拍的日吉大社红叶鸟居照片，裁切为 **9:16**。旧《原神》同人图不随公开版本发布。
+- 默认提示音保留作者调配的 `ciallo.wav` 和 `ciallo_alt2.wav`，其中 `ciallo.wav` 为默认音效，默认音量 60%。两段声音的**底层原始采样再分发授权需核验**，未确认前只保留于私有预发布工程。
+
+## 待完成
+
+1. 在此私有仓库导入经过整理的 v0.10.103 **全部源代码和必要素材**，不上传旧版 EXE、缓存、密钥、用户数据。
+2. 检查图片和音效来源、第三方组件许可证，补齐 LICENSE、NOTICE、ASSET_NOTICE、THIRD_PARTY_NOTICES。
+3. 执行 GitHub CI 语法与敏感信息检查；Windows 11 端另行进行功能和构建验收。
+4. 决定公开源码版本是否捆绑两段录音；未经核验时保留代码逻辑而不分发音频。
+5. 最终确认后才将仓库从 **Private** 改为 **Public**。源代码公开与 EXE 发行分开处理。
+
+请参阅本仓库的 **发布核验 Issue**。尚未完成的项目不应被当作已经通过测试或授权审核。
