@@ -5,6 +5,34 @@
 
 白饭下载器是一款面向 Windows 的可定制下载工具，以 **aria2** 为下载引擎、**PySide6** 为界面框架，支持 HTTP/FTP 下载、BT / 磁力链接、AI 辅助改名、本地 API、蓝鲸桌宠、背景裁切和自定义提示音。
 
+## 软件界面预览
+
+> 以下截图由 GitHub Actions 的 Windows 虚拟机运行项目中的 **PySide6 真实界面组件**生成。任务进度、文件名及 AI 搜索候选使用**演示数据**，并未执行真实下载或消耗 AI API 配额；因此这是界面启动与渲染验证，不是完整功能测试。
+
+### 下载器主界面
+
+![白饭下载器 Windows 主界面（示例下载任务）](docs/screenshots/main-window.png)
+
+### AI 智能改名
+
+通过常规匹配、AI API 搜索或手动填写，自定义下载任务的显示名称。
+
+<img src="docs/screenshots/ai-rename.png" alt="白饭下载器 AI 智能改名窗口：常规匹配、AI API、手动填写" width="640" />
+
+### 背景与桌宠自定义
+
+<table>
+  <tr><th>背景设置与自动切换</th><th>蓝鲸桌宠的状态与图片替换</th></tr>
+  <tr>
+    <td><img src="docs/screenshots/settings-background.png" alt="背景选择、白纱浓度、定时切换设置" /></td>
+    <td><img src="docs/screenshots/settings-pet.png" alt="蓝鲸桌宠的状态图和自定义图片" /></td>
+  </tr>
+</table>
+
+[查看 Windows 截图自动测试](https://github.com/king1054-maker/baifan-downloader/actions/workflows/windows-ui-preview.yml)
+
+---
+
 ## 从源码运行（Windows 11）
 
 1. 安装 **Python 3.12**，获取本仓库源码。
