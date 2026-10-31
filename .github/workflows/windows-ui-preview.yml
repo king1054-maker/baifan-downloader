@@ -47,7 +47,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- docs/screenshots/ai-rename.png docs/screenshots/settings-background.png docs/screenshots/settings-pet.png docs/screenshots/main-window.png docs/screenshots/capture-report.json
+          git add -- docs/screenshots/
           if (git diff --cached --quiet) {
             Write-Host "No screenshot updates"
           } else {
