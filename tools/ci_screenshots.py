@@ -23,6 +23,7 @@ sys.path.insert(0, str(ROOT))
 DEST = ROOT / "docs" / "screenshots"
 
 from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QFontDatabase, QFont
 from app import background, config, title_lookup, title_parse
 from app.engine import Aria2Engine
 from app.ui import theme
@@ -48,11 +49,11 @@ def capture(widget, name: str) -> dict:
     colors = {image.pixelColor(x, y).rgba()
               for x in range(0, w, max(1, w // 24))
               for y in range(0, h, max(1, h // 20))}
-    if len(colors) < 12:
-        raise RuntimeError(f"Screenshot appears blank ({len(colors)} colors): {name}")
     path = DEST / name
     if not im.save(str(path), "PNG") or path.stat().st_size < 10000:
         raise RuntimeError(f"Screenshot not saved or implausibly small: {name}")
+    if len(colors) < 12:
+        raise RuntimeError(f"Screenshot appears blank ({len(colors)} colors): {name}; file preserved for diagnosis")
     result = {"file": name, "width": w, "height": h,
               "bytes": path.stat().st_size, "sample_colors": len(colors)}
     print("SCREENSHOT", json.dumps(result, ensure_ascii=False), flush=True)
@@ -61,6 +62,21 @@ def capture(widget, name: str) -> dict:
 
 def main() -> int:
     app = QApplication.instance() or QApplication(["BaiFan CI screenshots"])
+    # GitHub-hosted Windows runner often lacks Chinese CJK glyphs.
+    # Download an OFL-licensed Google Noto font into the CI workspace only.
+    import urllib.request
+    font_dir = ROOT / ".cache" / "ci"
+    font_dir.mkdir(parents=True, exist_ok=True)
+    font_path = font_dir / "NotoSansSC.ttf"
+    font_url = ("https://raw.githubusercontent.com/google/fonts/main/"
+                "ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf")
+    urllib.request.urlretrieve(font_url, str(font_path))
+    font_id = QFontDatabase.addApplicationFont(str(font_path))
+    families = QFontDatabase.applicationFontFamilies(font_id) if font_id >= 0 else []
+    if not families:
+        raise RuntimeError("Could not register Chinese font on Windows runner")
+    app.setFont(QFont(families[0], 10))
+    print("FONT", families[0], font_path.stat().st_size, flush=True)
     app.setStyle("Fusion")
     app.setStyleSheet(theme.QSS)
     settings = dict(config.DEFAULTS)
@@ -96,8 +112,13 @@ def main() -> int:
         # Render the real settings dialog twice: interface and pet customization.
         opts = OptionsDialog(settings)
         windows.append(opts)
+        opts.setModal(False)
         opts.resize(900, 740)
+        opts.show()
+        for _ in range(5):
+            QApplication.processEvents()
         opts.tabs.setCurrentIndex(5)
+        opts.tabs.currentWidget().update()
         results.append(capture(opts, "settings-background.png"))
         opts.tabs.setCurrentIndex(6)
         results.append(capture(opts, "settings-pet.png"))
