@@ -1,0 +1,56 @@
+name: Windows UI preview (PySide6)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/ci_screenshots.py'
+      - '.github/workflows/windows-ui-preview.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  screenshot:
+    name: Render screenshots of real Qt widgets on Windows
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: '1'
+      QT_LOGGING_RULES: 'qt.qpa.*=false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install GUI dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      - name: Render actual PySide6 widgets with demo-only content
+        shell: pwsh
+        run: python tools/ci_screenshots.py
+      - name: Upload screenshots and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: baifan-windows-qt-screenshots
+          path: docs/screenshots/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Commit passing preview images to this repository
+        if: success()
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- docs/screenshots/ai-rename.png docs/screenshots/settings-background.png docs/screenshots/settings-pet.png docs/screenshots/main-window.png docs/screenshots/capture-report.json
+          if (git diff --cached --quiet) {
+            Write-Host "No screenshot updates"
+          } else {
+            git commit -m "docs: add Windows-rendered PySide6 UI previews (demo data)"
+            git push origin HEAD:main
+          }
