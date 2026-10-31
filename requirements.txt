@@ -1,0 +1,3 @@
+# Windows 11 / Python 3.12. Qt bindings only; rest of runtime uses Python stdlib.
+# Locked for migration candidate; Windows runtime tests still required.
+PySide6==6.11.3
