@@ -43,3 +43,7 @@ bin/aria2c.exe
 Thumbs.db
 .vscode/
 .idea/
+
+# Author-mixed notification audio: hold privately until underlying sample rights are verified
+assets/sounds/ciallo.wav
+assets/sounds/ciallo_alt2.wav
