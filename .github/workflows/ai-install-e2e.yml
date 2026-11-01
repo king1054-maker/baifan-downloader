@@ -20,6 +20,14 @@ jobs:
     steps:
       - name: Checkout root installation entrypoint
         uses: actions/checkout@v4
+      - name: Parse Windows PowerShell 5.1 source before running
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'install.ps1').Path, [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count -gt 0) { $parseErrors | Format-List; throw 'install.ps1 syntax invalid' }
+          Write-Host 'PowerShell 5.1 installation script parses successfully.'
       - name: Execute root installer in portable mode without Python
         shell: pwsh
         run: |
