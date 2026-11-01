@@ -27,7 +27,9 @@ $repo = 'king1054-maker/baifan-downloader'
 $api = "https://api.github.com/repos/$repo/releases?per_page=30"
 $headers = @{ 'User-Agent'='BaiFan-Installer/1.0'; 'Accept'='application/vnd.github+json' }
 Write-Host 'Finding the newest published BaiFan release...'
-$releases = @(Invoke-RestMethod -Uri $api -Headers $headers -TimeoutSec 30)
+# Windows PowerShell 5.1 may deliver a REST JSON array as a single pipeline
+# item. Enumerate the returned array directly, not via @(Invoke-RestMethod).
+$releases = Invoke-RestMethod -Uri $api -Headers $headers -TimeoutSec 30
 $release = $null
 foreach ($candidate in $releases) {
     if ($candidate.draft) { continue }
