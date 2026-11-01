@@ -8,10 +8,11 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 from app import integrity
-from app.api_server import ApiContext
+from app.api_server import ApiContext, _Handler
 
 
 class SelectedFileTests(unittest.TestCase):
@@ -105,6 +106,29 @@ class ApiSeedingTests(unittest.TestCase):
 
     def test_completed_http_download(self):
         self.assertTrue(self.context("complete").verify_gid("c")["ok"])
+
+
+
+class ApiWaitTests(unittest.TestCase):
+    def test_wait_returns_immediately_for_active_seeder(self):
+        ctx = Mock()
+        ctx.rpc.call.return_value = {
+            "gid": "bt-1", "status": "active", "seeder": "true",
+            "infoHash": "a" * 40, "totalLength": "7",
+            "completedLength": "7", "dir": "/tmp", "files": [],
+        }
+        ctx.store.get.return_value = {}
+        ctx.verify_gid.return_value = {"ok": True, "file_count": 1}
+        handler = _Handler.__new__(_Handler)
+        handler.server = SimpleNamespace(ctx=ctx)
+        handler._send = Mock()
+        handler._wait("bt-1", {"timeout": ["600"], "verify": ["1"]})
+        result = handler._send.call_args.args[0]
+        self.assertTrue(result["done"])
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["task"]["download_complete"])
+        self.assertTrue(result["task"]["verify"]["ok"])
+        ctx.verify_gid.assert_called_once_with("bt-1")
 
 
 if __name__ == "__main__":
