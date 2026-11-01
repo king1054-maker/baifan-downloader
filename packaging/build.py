@@ -3,7 +3,7 @@
 
 用法（在项目根目录）：
     python packaging/build.py            只打绿色目录 dist/BaiFanDownloader/（须完成第三方版权核查后才能分发）
-    python packaging/build.py --setup    顺便编译安装包 dist/白饭下载器-0.9.1-安装包.exe
+    python packaging/build.py --setup    顺便编译安装包 dist/白饭下载器-0.10.103-安装包.exe
 
 为什么不写成 .bat：bat 里中文路径容易乱码，且要判断 ISCC 在不在。
 """
@@ -154,7 +154,8 @@ def main() -> int:
         "立绘 ciallo.png": [OUT_DIR / "_internal" / "assets" / "pet" / "ciallo.png"],
         "立绘 tease.png": [OUT_DIR / "_internal" / "assets" / "pet" / "tease.png"],
         "换图素材库": [OUT_DIR / "_internal" / "assets" / "pet" / "library" / "01 待命-ciallo.png"],
-        "音效 ciallo.wav": [OUT_DIR / "_internal" / "assets" / "sounds" / "ciallo.wav"],
+        # 未公开的 Ciallo 混音不属于公开安装包必备内容，缺失时程序回退 ding.wav。
+        "音效 bite.wav": [OUT_DIR / "_internal" / "assets" / "sounds" / "bite.wav"],
         "音效 ding.wav": [OUT_DIR / "_internal" / "assets" / "sounds" / "ding.wav"],
         "配置模板": [OUT_DIR / "_internal" / "assets" / "conf" / "aria2.conf.tpl"],
     }
