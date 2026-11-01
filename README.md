@@ -1,6 +1,6 @@
 # 白饭下载器 · BaiFan Downloader
 
-> **v0.10.103 · 已导入源码 · 私有预发布仓库（Private）**  
+> **v0.10.103 · 源码已公开（Public）· 暂无 Windows 安装包（Releases）**  
 > Python 源码与必要素材已上传，GitHub Actions 源码完整性检查通过。**尚未公开发布 Windows 安装包，且未完成独立 Windows 11 实机验收。**
 
 白饭下载器是一款面向 Windows 的可定制下载工具，以 **aria2** 为下载引擎、**PySide6** 为界面框架，支持 HTTP/FTP 下载、BT / 磁力链接、AI 辅助改名、本地 API、蓝鲸桌宠、背景裁切和自定义提示音。
@@ -74,6 +74,6 @@
 - [ ] 确认提示音底层采样的公发授权
 - [ ] 独立 Windows 11 构建、安装与功能测试
 - [ ] 完成第三方组件及二进制分发合规复核
-- [ ] 仓库所有者批准后从 Private 改为 Public
+- [x] 仓库所有者已将仓库从 Private 改为 Public
 
 查看 [发布核验任务](../../issues/1)、[版权声明](ASSET_NOTICE.md)、[第三方许可](THIRD_PARTY_NOTICES.md)、[安全报告](SECURITY.md)。
