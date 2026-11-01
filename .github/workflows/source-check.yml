@@ -12,6 +12,8 @@ jobs:
           python-version: '3.12'
       - name: Verify syntax
         run: python -m compileall -q app run.py tools packaging
+      - name: Verify download integrity regressions
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Check license and example backgrounds
         run: |
           python -c "from pathlib import Path; p=Path('.'); assert (p/'LICENSE').is_file(); assert (p/'ASSET_NOTICE.md').is_file(); assert len(list((p/'assets/backgrounds').glob('*.jpg')))==2; assert not list(p.rglob('aria2c.exe'))"

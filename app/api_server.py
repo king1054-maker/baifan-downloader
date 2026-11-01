@@ -140,11 +140,16 @@ class ApiContext:
     # 供 UI 复用：任务完成时后台校验
     def verify_gid(self, gid: str) -> dict:
         try:
-            st = self.rpc.call("aria2.tellStatus", [gid, ["files", "dir", "status", "errorCode"]])
+            st = self.rpc.call("aria2.tellStatus", [gid,
+                ["files", "dir", "status", "seeder", "infoHash", "errorCode"]])
         except Aria2Error as exc:
-            return {"ok": False, "error": "无法读取任务: %s" % exc}
-        if st.get("status") != "complete":
-            return {"ok": False, "error": "任务尚未完成（%s）" % st.get("status")}
+            return {"ok": False, "status": "unavailable", "error": "无法读取任务: %s" % exc}
+        status = st.get("status")
+        # BT 下载完成后继续做种时，aria2 仍返回 active；seeder=true 代表已完成下载。
+        seeding = status == "active" and str(st.get("seeder", "")).lower() == "true"
+        if status != "complete" and not seeding:
+            return {"ok": False, "status": "not_ready",
+                    "error": "任务尚未完成（%s）" % status}
         report = integrity.check_task(st.get("files") or [], st.get("dir", ""))
         report["checked_at"] = time.time()
         with self._lock:
@@ -560,11 +565,14 @@ class _Handler(BaseHTTPRequestHandler):
         while time.time() < deadline:
             st = self.ctx.rpc.call("aria2.tellStatus", [gid])
             status = st.get("status")
-            if status in ("complete", "error", "removed"):
+            seeding = status == "active" and str(st.get("seeder", "")).lower() == "true"
+            download_finished = status == "complete" or seeding
+            if download_finished or status in ("error", "removed"):
                 task = task_json(st, self.ctx.store.get(gid))
-                if status == "complete" and do_verify:
+                task["download_complete"] = download_finished
+                if download_finished and do_verify:
                     task["verify"] = self.ctx.verify_gid(gid)
-                return self._send({"ok": status == "complete", "done": True, "task": task})
+                return self._send({"ok": download_finished, "done": True, "task": task})
             time.sleep(interval)
 
         st = self.ctx.rpc.call("aria2.tellStatus", [gid])
