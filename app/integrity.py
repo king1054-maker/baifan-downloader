@@ -214,12 +214,19 @@ def check_file(path: str | Path, expected: int = 0) -> Check:
 
 
 def check_task(files: list[dict], base_dir: str) -> dict:
-    """对一个 aria2 任务的全部文件做校验。
+    """校验 aria2 实际选择下载的文件，而不误判未选 BT 文件。
 
-    files: [{"path": ..., "length": ..., "completedLength": ...}, ...]
+    aria2 的 selected 一般为字符串 "true" / "false"。
+    若缺少 selected 字段（旧数据或 HTTP 任务），按已选择处理。
+    该函数只做文件大小和部分格式结构检查，不等于 BT 分片哈希复核。
     """
     checks: list[Check] = []
+    skipped = 0
     for f in files:
+        selected = f.get("selected", True)
+        if selected is False or str(selected).strip().lower() in ("false", "0", "no"):
+            skipped += 1
+            continue
         raw = f.get("path", "")
         expected = int(f.get("length") or 0)
         done = int(f.get("completedLength") or 0)
@@ -230,13 +237,17 @@ def check_task(files: list[dict], base_dir: str) -> dict:
             continue
         checks.append(check_file(raw, expected))
 
-    ok = all(c.ok for c in checks)
+    # 无文件详情、或全部未勾选时，不能把空检查列表认作完整。
+    ok = bool(checks) and all(c.ok for c in checks)
     return {
         "ok": ok,
         "file_count": len(checks),
+        "total_file_count": len(files),
+        "skipped_count": skipped,
         "bad_count": sum(1 for c in checks if not c.ok),
         "files": [c.as_dict() for c in checks if not c.ok][:20],
         "dir": base_dir,
+        **({"error": "没有可校验的已选择文件"} if not checks else {}),
     }
 
 
