@@ -145,8 +145,7 @@ class ApiContext:
         except Aria2Error as exc:
             return {"ok": False, "status": "unavailable", "error": "无法读取任务: %s" % exc}
         status = st.get("status")
-        # aria2 在 BT 下载完成且继续做种时，仍报告 active。
-        # 只有 seeder=true 时才能视为已完成，而不是所有 active。
+        # BT 下载完成后继续做种时，aria2 仍返回 active；seeder=true 代表已完成下载。
         seeding = status == "active" and str(st.get("seeder", "")).lower() == "true"
         if status != "complete" and not seeding:
             return {"ok": False, "status": "not_ready",
