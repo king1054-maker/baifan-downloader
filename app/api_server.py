@@ -140,11 +140,17 @@ class ApiContext:
     # 供 UI 复用：任务完成时后台校验
     def verify_gid(self, gid: str) -> dict:
         try:
-            st = self.rpc.call("aria2.tellStatus", [gid, ["files", "dir", "status", "errorCode"]])
+            st = self.rpc.call("aria2.tellStatus", [gid,
+                ["files", "dir", "status", "seeder", "infoHash", "errorCode"]])
         except Aria2Error as exc:
-            return {"ok": False, "error": "无法读取任务: %s" % exc}
-        if st.get("status") != "complete":
-            return {"ok": False, "error": "任务尚未完成（%s）" % st.get("status")}
+            return {"ok": False, "status": "unavailable", "error": "无法读取任务: %s" % exc}
+        status = st.get("status")
+        # aria2 在 BT 下载完成且继续做种时，仍报告 active。
+        # 只有 seeder=true 时才能视为已完成，而不是所有 active。
+        seeding = status == "active" and str(st.get("seeder", "")).lower() == "true"
+        if status != "complete" and not seeding:
+            return {"ok": False, "status": "not_ready",
+                    "error": "任务尚未完成（%s）" % status}
         report = integrity.check_task(st.get("files") or [], st.get("dir", ""))
         report["checked_at"] = time.time()
         with self._lock:
