@@ -1,4 +1,4 @@
-name: Publish tested Windows preview installer
+name: Publish tested Windows preview (Setup and portable)
 
 on:
   push:
@@ -17,63 +17,74 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout exact verified project
+      - name: Checkout release source
         uses: actions/checkout@v4
-      - name: Download previously successful Windows installer candidate
+      - name: Download previously smoke-tested Windows EXE and portable ZIP
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p preview-assets
-          gh run download 41270375811 \
+          gh run download 41275105326 \
             --repo "${GITHUB_REPOSITORY}" \
             --name baifan-windows-installer-candidate \
             --dir preview-assets
           ls -lh preview-assets
-      - name: Verify release artifact checksum
+      - name: Verify BOTH release files using published SHA256SUMS
         shell: bash
         run: |
           set -euo pipefail
           cd preview-assets
           sha256sum --check SHA256SUMS.txt
           test -s baifan-downloader-0.10.103-setup.exe
-      - name: Prepare preview release information
+          test -s baifan-downloader-0.10.103-portable-win-x64.zip
+      - name: Prepare public preview documentation
         shell: bash
         run: |
           cat > preview-assets/RELEASE_NOTES.md <<'ENDNOTES'
-          ## 白饭下载器 0.10.103 · Windows 预览安装包
+          ## 白饭下载器 v0.10.103 · Windows 安装与绿色版（预览版 2）
 
-          **Windows 10/11 x64。** 下载 `baifan-downloader-0.10.103-setup.exe`，运行安装向导即可。普通用户不需要 Python 或自行编译。
+          **Windows 10/11 x64，普通用户和 AI 都不需要 Python 或编译源码。**
 
-          **预览版限制：** 已在 GitHub Actions Windows 环境通过构建、安装到干净目录、程序启动及本地 API 健康检查；**尚未**完成真实 BT/磁力、多站点登录下载、长期运行、Windows SmartScreen/杀毒软件和多种机型的全覆盖测试。请将其视为候选版，重要下载任务建议保留备份。
+          - **普通用户：** 下载 `baifan-downloader-0.10.103-setup.exe`，双击进入 Windows 安装向导。
+          - **AI 智能体 / 受限桌面环境：** 推荐 `baifan-downloader-0.10.103-portable-win-x64.zip`，下载后核对 `SHA256SUMS.txt`，解压并启动 `BaiFanDownloader/BaiFanDownloader.exe`，无需安装向导或注册表写入。
+          - **统一 AI 安装入口：** 只需提供仓库 URL `https://github.com/king1054-maker/baifan-downloader`，AI 阅读根目录 [INSTALL.md](https://github.com/king1054-maker/baifan-downloader/blob/main/INSTALL.md) 后执行即可。根目录的 `install.ps1` 可自动发现最新发行版本、下载、校验、解压并尝试启动。
 
-          - 基于 PySide6 + aria2；aria2 1.37.0 使用微软 winget 清单公开 SHA256 校验后打包。
-          - 内含独立 aria2 二进制、其 GPL 许可证及 aria2 1.37.0 对应源码归档。
-          - 保留 AI 辅助改名、外部本地 API、桌宠及背景自定义。
-          - 不含尚未核实原始采样再分发授权的两段 Ciallo 混音，默认使用 ding.wav；用户可自行选择自定义音效。
-          - 二进制**尚未代码签名**，Windows 可能提示“未知发布者”。请只从本仓库官方下载、核对 SHA256；勿从第三方链接下载。
-          - 项目原创代码采用 PolyForm Noncommercial 1.0.0（非商业源码可见，不是 OSI 开源）；Qt/PySide6、aria2 仍保留各自许可。
+          ### 已验证
+          - 在 GitHub Actions Windows 环境完成 EXE + Portable ZIP 构建。
+          - EXE 进行安装并启动，本地 API 健康检查通过。
+          - Portable ZIP 在全新目录解压、启动，API 健康检查通过。
+          - 两种制品各自提供 SHA256 校验值。
+          - 使用 aria2 官方 1.37.0 x64 并包含相应许可证和源码归档。
 
-          本版本软件尚无自动更新。源码可在仓库主分支查看；有问题请通过 Issues 反馈。
+          ### 限制
+          - **预览版而非稳定版**；没有完成真实 BT/磁力、多网站登录下载、Windows 多设备和长期运行验收。
+          - **安装包与程序尚未代码签名**，Windows 可能提示未知发布者。
+          - 某些 AI 沙箱禁止启动 Windows EXE；ZIP 解决图形安装器和注册表限制，**但不能绕过操作系统或沙箱对运行 EXE 的禁令**。这种情况下需要用户亲自启动或授权。
+          - 不包含再分发授权尚未确认的 Ciallo 两段混音，使用内置提示音；不收集或上传用户的 AI API Key。
+          - 应用原创代码采用 PolyForm Noncommercial 1.0.0；PySide6 / Qt、aria2 遵循各自许可证。请保留已有用户数据，避免覆盖旧安装目录。
+
+          Build source: [Windows CI #41275105326](https://github.com/king1054-maker/baifan-downloader/actions/runs/41275105326). 
           ENDNOTES
-      - name: Create public pre-release (not stable)
+      - name: Publish public PRE-RELEASE (never overwrite existing assets)
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          TAG="v0.10.103-preview1"
+          TAG="v0.10.103-preview2"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Preview release already exists; leaving it unchanged."
+            echo "Pre-release already exists. Do not overwrite installer users already downloaded."
             exit 0
           fi
           gh release create "$TAG" \
             preview-assets/baifan-downloader-0.10.103-setup.exe \
+            preview-assets/baifan-downloader-0.10.103-portable-win-x64.zip \
             preview-assets/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" \
-            --target "a8df8ff6a1d52bd3611c6d45a293c842fbd5138b" \
-            --title "白饭下载器 v0.10.103 · Windows 预览安装包" \
+            --target "3189d241a9edeaaf14d33795c6d289cbf2f60e4e" \
+            --title "白饭下载器 0.10.103 · Windows 安装与绿色版（Preview 2）" \
             --prerelease \
             --notes-file preview-assets/RELEASE_NOTES.md
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url,isPrerelease,assets
