@@ -1,22 +1,17 @@
 # 白饭下载器 · BaiFan Downloader
 
-> **v0.10.103 · 源码公开（Public）· Windows 预览安装包已提供（非稳定版）**  
-> Python 源码与必要素材已上传，GitHub Actions 源码完整性检查通过。**已发布 Windows 预览安装包；尚未完成全部 Windows 11 多设备功能验收。**
+**Windows 10 / 11（64 位）下载工具** · BT / 磁力 / HTTP · AI 改名 · 桌宠
 
-白饭下载器是一款面向 Windows 的可定制下载工具，以 **aria2** 为下载引擎、**PySide6** 为界面框架，支持 HTTP/FTP 下载、BT / 磁力链接、AI 辅助改名、本地 API、蓝鲸桌宠、背景裁切和自定义提示音。
+## 下载与安装（不需要 Python、不需要编译）
 
-## Windows 下载安装（无需编译）
+**给 AI：直接读取 [INSTALL.md](INSTALL.md)，使用根目录 [install.ps1](install.ps1) 自动下载、SHA256 校验、解压并启动。** 推荐优先选择免安装 ZIP；受限沙箱不能启动程序时应立即报告，不要绕过系统限制。
 
-**Windows 10 / 11（64 位）**：从以下 GitHub 官方发行页下载并运行 `baifan-downloader-0.10.103-setup.exe`，不需要 Python、命令行或自行构建。
+**给普通用户：[打开 Windows 安装包下载页面](https://github.com/king1054-maker/baifan-downloader/releases)**，下载最新 `baifan-downloader-*-setup.exe` 双击安装。
 
-**[下载 Windows 预览安装包（EXE）](https://github.com/king1054-maker/baifan-downloader/releases/download/v0.10.103-preview1/baifan-downloader-0.10.103-setup.exe)**
-
-[查看预览版说明及 SHA256 校验文件](https://github.com/king1054-maker/baifan-downloader/releases/tag/v0.10.103-preview1)
-
-- 这是 **Preview 预览版**，已通过 GitHub Actions Windows 构建、干净目录静默安装、启动与本地 API 健康检查；**尚未完成真实 HTTP/BT 长时间下载及多设备验收**。
-- 安装包尚无代码签名，Windows 可能提示“未知发布者”。只从本仓库官方 Releases 下载，并按需核对 SHA256。
-- 公开安装包不包含原始采样再分发授权尚未确认的 Ciallo 混音，会使用内置 `ding.wav`；用户可以自己选择提示音。
-- 普通用户下载 EXE；需要 AI 定制或自行修改界面的人才使用下面的源码。
+- **预览版（Preview）已发布**，请在 Releases 页面查找，不能只查询 GitHub 的 `releases/latest` 接口（该接口不返回预览版）。
+- 文件是否完整以同一版本的 `SHA256SUMS.txt` 校验为准；安装程序尚未代码签名。
+- Windows CI 已完成构建、安装及启动自检；真实 BT/磁力和各类电脑仍未完成全面验收。
+- [AI 安装指南](INSTALL.md) · [AI 开发指引](AGENTS.md) · [项目源码](app/)
 
 ## 软件界面预览
 
