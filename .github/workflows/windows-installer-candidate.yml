@@ -46,6 +46,10 @@ jobs:
           New-Item bin -ItemType Directory -Force | Out-Null
           Copy-Item $exe.FullName 'bin/aria2c.exe'
           & './bin/aria2c.exe' --version
+          # Bundle the matching aria2 source archive for GPL source availability.
+          New-Item 'bin/source' -ItemType Directory -Force | Out-Null
+          Invoke-WebRequest -Uri 'https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0.tar.xz' -OutFile 'bin/source/aria2-1.37.0.tar.xz'
+          if ((Get-Item 'bin/source/aria2-1.37.0.tar.xz').Length -lt 1000000) { throw 'aria2 source archive missing' }
       - name: Install PySide6 and PyInstaller
         shell: pwsh
         run: |
@@ -120,6 +124,38 @@ jobs:
             }
           } finally {
             if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+          }
+      - name: Smoke-test installer installation on clean Windows path
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The previous smoke test forcibly terminated the GUI; clear its child engine.
+          Get-Process -Name aria2c -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 1
+          $installer = Get-ChildItem dist -Filter '*-安装包.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'Inno installer missing' }
+          $dest = Join-Path $env:RUNNER_TEMP 'BaiFanInstallSmoke'
+          $cmd = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /DIR=`"$dest`""
+          $result = Start-Process -FilePath $installer.FullName -ArgumentList $cmd -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw "Installer exit code: $($result.ExitCode)" }
+          $exe = Join-Path $dest 'BaiFanDownloader.exe'
+          if (-not (Test-Path $exe)) { throw 'Installed program missing' }
+          $p = Start-Process -FilePath $exe -WorkingDirectory $dest -PassThru
+          $ready = $false
+          try {
+            for ($i = 0; $i -lt 65; $i++) {
+              Start-Sleep -Milliseconds 600
+              if ($p.HasExited) { throw "Installed app exited: $($p.ExitCode)" }
+              try {
+                $h = Invoke-RestMethod -Uri 'http://127.0.0.1:6811/health' -TimeoutSec 2
+                if ($h.ok -eq $true) { $ready = $true; break }
+              } catch { }
+            }
+            if (-not $ready) { throw 'Installed GUI did not expose local health endpoint' }
+            Write-Host "Installed app started OK from $dest"
+          } finally {
+            if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+            Get-Process -Name aria2c -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
           }
       - name: Verify installer and record checksums
         shell: pwsh
