@@ -1,3 +1,7 @@
+> **历史存档：这是旧工程导入／预发布记录，不是当前安装说明。** 要下载白饭下载器，请返回 [INSTALL.md](../../INSTALL.md) 或 [Releases](https://github.com/king1054-maker/baifan-downloader/releases)。
+
+---
+
 # 把已有白饭下载器工程导入本私有仓库
 
 **当前仓库状态：Private。** 必须从已有的 **v0.10.103 / PySide6** 工程导入完整源码。不要重新搭建、生成一个空壳工程、或者覆盖新功能。

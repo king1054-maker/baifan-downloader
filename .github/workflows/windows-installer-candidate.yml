@@ -1,15 +1,20 @@
-name: Windows installer candidate (unreleased)
+name: Windows EXE and portable ZIP candidate (unreleased)
 
 on:
   push:
     branches:
       - build/windows-installer-candidate
+      - feat/zero-friction-ai-install
     paths:
       - '.github/workflows/windows-installer-candidate.yml'
       - 'packaging/**'
       - 'requirements*.txt'
       - 'app/**'
       - 'run.py'
+      - 'install.ps1'
+      - 'INSTALL.md'
+      - 'AGENTS.md'
+      - 'README.md'
   workflow_dispatch:
 
 permissions:
@@ -17,7 +22,7 @@ permissions:
 
 jobs:
   candidate:
-    name: Build and smoke-test setup.exe on Windows
+    name: Build and smoke-test setup.exe and portable.zip on Windows
     runs-on: windows-latest
     timeout-minutes: 45
     env:
@@ -61,6 +66,14 @@ jobs:
           python -m compileall -q app run.py tools packaging
           python -m unittest discover -s tests -p 'test_*.py' -v
           python -m app.selfcheck
+      - name: Parse root installer PowerShell 5.1 syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          $ast = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'install.ps1').Path, [ref]$tokens, [ref]$parseErrors)
+          if ($parseErrors.Count -gt 0) { $parseErrors | Format-List; throw 'install.ps1 syntax invalid' }
+          Write-Host 'Root installer parses without errors.'
       - name: Install Inno Setup 6
         shell: pwsh
         run: |
@@ -157,6 +170,38 @@ jobs:
             if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
             Get-Process -Name aria2c -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
           }
+      - name: Package and smoke-test portable ZIP on clean Windows path
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Get-Process -Name aria2c -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          $zip = 'dist/baifan-downloader-0.10.103-portable-win-x64.zip'
+          Compress-Archive -LiteralPath 'dist/BaiFanDownloader' -DestinationPath $zip -CompressionLevel Optimal
+          if ((Get-Item $zip).Length -lt 10000000) { throw 'Portable ZIP unexpectedly small' }
+          $unzipped = Join-Path $env:RUNNER_TEMP 'BaiFanPortableSmoke'
+          Expand-Archive -LiteralPath $zip -DestinationPath $unzipped
+          $dir = Join-Path $unzipped 'BaiFanDownloader'
+          $exe = Join-Path $dir 'BaiFanDownloader.exe'
+          $engine = Join-Path $dir '_internal/bin/aria2c.exe'
+          if (-not (Test-Path $exe) -or -not (Test-Path $engine)) { throw 'Portable EXE or aria2 missing' }
+          $p = Start-Process -FilePath $exe -WorkingDirectory $dir -PassThru
+          $ready = $false
+          try {
+            for ($i = 0; $i -lt 65; $i++) {
+              Start-Sleep -Milliseconds 600
+              $p.Refresh()
+              if ($p.HasExited) { throw "Portable app exited: $($p.ExitCode)" }
+              try {
+                $h = Invoke-RestMethod -Uri 'http://127.0.0.1:6811/health' -TimeoutSec 2
+                if ($h.ok -eq $true) { $ready = $true; break }
+              } catch { }
+            }
+            if (-not $ready) { throw 'Portable app local health endpoint unavailable' }
+            Write-Host 'Portable ZIP extracts and starts successfully.'
+          } finally {
+            if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+            Get-Process -Name aria2c -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          }
       - name: Verify installer and record checksums
         shell: pwsh
         run: |
@@ -165,16 +210,23 @@ jobs:
           if ($null -eq $installer) { throw 'Installer executable was not generated' }
           Copy-Item $installer.FullName 'dist/baifan-downloader-0.10.103-setup.exe'
           $sha = (Get-FileHash 'dist/baifan-downloader-0.10.103-setup.exe' -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$sha  baifan-downloader-0.10.103-setup.exe" | Out-File -Encoding ascii 'dist/SHA256SUMS.txt'
-          "Install candidate. Not a published Release. CI build and startup smoke verified; real download/BT and installer UI still require acceptance." | Out-File -Encoding utf8 'dist/BUILD_STATUS.txt'
-          Write-Host "SHA256 $sha"
-      - name: Upload candidate installer
+          $zipName = 'baifan-downloader-0.10.103-portable-win-x64.zip'
+          $zipSha = (Get-FileHash "dist/$zipName" -Algorithm SHA256).Hash.ToLowerInvariant()
+          @(
+            "$sha  baifan-downloader-0.10.103-setup.exe",
+            "$zipSha  $zipName"
+          ) | Out-File -Encoding ascii 'dist/SHA256SUMS.txt'
+          "Pre-release candidate. EXE and portable ZIP built and startup-smoke-tested; real HTTP/BT downloads and sandbox launch need further acceptance." | Out-File -Encoding utf8 'dist/BUILD_STATUS.txt'
+          Write-Host "Setup SHA256 $sha"
+          Write-Host "Portable ZIP SHA256 $zipSha"
+      - name: Upload Windows EXE plus portable ZIP bundle
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: baifan-windows-installer-candidate
           path: |
             dist/baifan-downloader-0.10.103-setup.exe
+            dist/baifan-downloader-0.10.103-portable-win-x64.zip
             dist/SHA256SUMS.txt
             dist/BUILD_STATUS.txt
           retention-days: 14

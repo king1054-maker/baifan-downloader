@@ -1,3 +1,7 @@
+> **历史存档：这是旧工程导入／预发布记录，不是当前安装说明。** 要下载白饭下载器，请返回 [INSTALL.md](../../INSTALL.md) 或 [Releases](https://github.com/king1054-maker/baifan-downloader/releases)。
+
+---
+
 # 白饭下载器 v0.10.103 · 发布核验清单
 
 > **Private staging：源码已导入，不等于已获准公开或 Windows 版完成验收。**
