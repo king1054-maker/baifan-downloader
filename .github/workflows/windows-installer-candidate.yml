@@ -74,6 +74,17 @@ jobs:
           ) | Where-Object { Test-Path $_ } | Select-Object -First 1
           if (-not $iscc) { throw 'Inno Setup compiler missing' }
           Write-Host "Using $iscc"
+      - name: Obtain pinned Simplified Chinese installer translation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sha = '1ff90acc4ed4aee82b1cda43253243deee3daed4'
+          $u = "https://raw.githubusercontent.com/kira-96/Inno-Setup-Chinese-Simplified-Translation/$sha/ChineseSimplified.isl"
+          Invoke-WebRequest -Uri $u -OutFile 'packaging/ChineseSimplified.isl'
+          if (-not (Test-Path 'packaging/ChineseSimplified.isl')) { throw 'Chinese translation missing' }
+          $n = (Get-Item 'packaging/ChineseSimplified.isl').Length
+          if ($n -lt 15000) { throw "Chinese translation suspiciously small: $n bytes" }
+          Write-Host "Chinese installer translation ready: $n bytes"
       - name: Build Windows onedir and installer
         shell: pwsh
         run: |
