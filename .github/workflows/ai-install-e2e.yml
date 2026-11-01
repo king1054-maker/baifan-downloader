@@ -1,0 +1,44 @@
+name: One-command AI installation end-to-end
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/ai-install-e2e.yml'
+      - 'install.ps1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Discover, download, checksum, extract, launch
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout root installation entrypoint
+        uses: actions/checkout@v4
+      - name: Execute root installer in portable mode without Python
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $destination = Join-Path $env:RUNNER_TEMP 'BaiFanAI-E2E'
+          & powershell.exe -NoProfile -File .\install.ps1 -Mode Portable -Destination $destination
+          if ($LASTEXITCODE -ne 0) { throw "Root install.ps1 exited with $LASTEXITCODE" }
+          $exe = Join-Path $destination 'BaiFanDownloader-v0.10.103-preview2/BaiFanDownloader.exe'
+          $aria2 = Join-Path $destination 'BaiFanDownloader-v0.10.103-preview2/_internal/bin/aria2c.exe'
+          if (-not (Test-Path $exe) -or -not (Test-Path $aria2)) { throw 'Expected portable app or aria2 missing' }
+          Write-Host "Portable deployment succeeded at $exe"
+          $ready = $false
+          for ($i=0; $i -lt 30; $i++) {
+            Start-Sleep -Milliseconds 700
+            try {
+              $h = Invoke-RestMethod -Uri 'http://127.0.0.1:6811/health' -TimeoutSec 2
+              if ($h.ok -eq $true) { $ready = $true; break }
+            } catch { }
+          }
+          if (-not $ready) { throw 'Installed app did not respond to local health check' }
+          Write-Host 'PASS: GitHub repo -> release discovery -> download -> SHA256 -> extract -> EXE -> /health'
+          Get-Process -Name BaiFanDownloader,aria2c -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
