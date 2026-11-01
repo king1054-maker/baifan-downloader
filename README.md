@@ -56,7 +56,7 @@
    ```
 5. 软件的 AI API Key 由用户在本地设置，不得提交至仓库。
 
-这是源码运行指南，**不代表所有功能已经完成实机测试**。安装包构建所需事项见 `PUBLISH_GUIDE.md` 和 `RELEASE_GATES.md`。
+以上仅供开发者阅读，不是普通用户或 AI 安装所需步骤。历史发布记录已移至 [docs/archive](docs/archive/)；安装请直接参见 [INSTALL.md](INSTALL.md)。
 
 ## 版权与使用许可
 
