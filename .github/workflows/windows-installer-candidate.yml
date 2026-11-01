@@ -1,0 +1,191 @@
+name: Windows installer candidate (unreleased)
+
+on:
+  push:
+    branches:
+      - build/windows-installer-candidate
+    paths:
+      - '.github/workflows/windows-installer-candidate.yml'
+      - 'packaging/**'
+      - 'requirements*.txt'
+      - 'app/**'
+      - 'run.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    name: Build and smoke-test setup.exe on Windows
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+      ARIA2_ZIP_SHA256: 67d015301eef0b612191212d564c5bb0a14b5b9c4796b76454276a4d28d9b288
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download official aria2 x64 and verify pinned SHA-256
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $u = "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip"
+          $archive = Join-Path $env:RUNNER_TEMP "aria2-1.37.0-win-64bit-build1.zip"
+          Invoke-WebRequest -Uri $u -OutFile $archive
+          $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          if ($hash -ne $env:ARIA2_ZIP_SHA256) { throw "aria2 official zip hash mismatch: $hash" }
+          Expand-Archive -Path $archive -DestinationPath (Join-Path $env:RUNNER_TEMP 'aria2') -Force
+          $exe = Get-ChildItem (Join-Path $env:RUNNER_TEMP 'aria2') -Filter 'aria2c.exe' -Recurse | Select-Object -First 1
+          if ($null -eq $exe) { throw 'aria2c.exe not found inside official zip' }
+          New-Item bin -ItemType Directory -Force | Out-Null
+          Copy-Item $exe.FullName 'bin/aria2c.exe'
+          & './bin/aria2c.exe' --version
+          # Bundle the matching aria2 source archive for GPL source availability.
+          New-Item 'bin/source' -ItemType Directory -Force | Out-Null
+          Invoke-WebRequest -Uri 'https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0.tar.xz' -OutFile 'bin/source/aria2-1.37.0.tar.xz'
+          if ((Get-Item 'bin/source/aria2-1.37.0.tar.xz').Length -lt 1000000) { throw 'aria2 source archive missing' }
+      - name: Install PySide6 and PyInstaller
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-build.txt
+      - name: Run Python regression checks
+        shell: pwsh
+        run: |
+          python -m compileall -q app run.py tools packaging
+          python -m unittest discover -s tests -p 'test_*.py' -v
+          python -m app.selfcheck
+      - name: Install Inno Setup 6
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $iscc = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            choco install innosetup -y --no-progress
+          }
+          $iscc = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { throw 'Inno Setup compiler missing' }
+          Write-Host "Using $iscc"
+      - name: Obtain pinned Simplified Chinese installer translation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sha = '1ff90acc4ed4aee82b1cda43253243deee3daed4'
+          $u = "https://raw.githubusercontent.com/kira-96/Inno-Setup-Chinese-Simplified-Translation/$sha/ChineseSimplified.isl"
+          Invoke-WebRequest -Uri $u -OutFile 'packaging/ChineseSimplified.isl'
+          if (-not (Test-Path 'packaging/ChineseSimplified.isl')) { throw 'Chinese translation missing' }
+          $n = (Get-Item 'packaging/ChineseSimplified.isl').Length
+          if ($n -lt 15000) { throw "Chinese translation suspiciously small: $n bytes" }
+          Write-Host "Chinese installer translation ready: $n bytes"
+      - name: Build Windows onedir and installer
+        shell: pwsh
+        run: |
+          # tools/accept.py is an extensive interactive/hardware suite.
+          # CI runs isolated static, regression and runtime smoke tests instead.
+          python packaging/build.py --setup --no-test
+      - name: Smoke-test built executable with local RPC/API
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = (Resolve-Path 'dist/BaiFanDownloader/BaiFanDownloader.exe').Path
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru
+          $ready = $false
+          try {
+            for ($i = 0; $i -lt 70; $i++) {
+              Start-Sleep -Milliseconds 600
+              if ($p.HasExited) {
+                throw "BaiFanDownloader.exe exited early with code $($p.ExitCode)"
+              }
+              try {
+                $h = Invoke-RestMethod -Uri 'http://127.0.0.1:6811/health' -TimeoutSec 2
+                if ($h.ok -eq $true) {
+                  $ready = $true
+                  Write-Host "API /health success, version $($h.version)"
+                  break
+                }
+              } catch { }
+            }
+            if (-not $ready) {
+              $logs = @('dist/BaiFanDownloader/logs/app.log','dist/BaiFanDownloader/logs/aria2.log')
+              foreach ($log in $logs) { if (Test-Path $log) { Get-Content $log -Tail 60 } }
+              throw "GUI app did not start local API on port 6811"
+            }
+          } finally {
+            if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+          }
+      - name: Smoke-test installer installation on clean Windows path
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The previous smoke test forcibly terminated the GUI; clear its child engine.
+          Get-Process -Name aria2c -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 1
+          $installer = Get-ChildItem dist -Filter '*-安装包.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'Inno installer missing' }
+          $dest = Join-Path $env:RUNNER_TEMP 'BaiFanInstallSmoke'
+          $cmd = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /DIR=`"$dest`""
+          $result = Start-Process -FilePath $installer.FullName -ArgumentList $cmd -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw "Installer exit code: $($result.ExitCode)" }
+          $exe = Join-Path $dest 'BaiFanDownloader.exe'
+          if (-not (Test-Path $exe)) { throw 'Installed program missing' }
+          $p = Start-Process -FilePath $exe -WorkingDirectory $dest -PassThru
+          $ready = $false
+          try {
+            for ($i = 0; $i -lt 65; $i++) {
+              Start-Sleep -Milliseconds 600
+              if ($p.HasExited) { throw "Installed app exited: $($p.ExitCode)" }
+              try {
+                $h = Invoke-RestMethod -Uri 'http://127.0.0.1:6811/health' -TimeoutSec 2
+                if ($h.ok -eq $true) { $ready = $true; break }
+              } catch { }
+            }
+            if (-not $ready) { throw 'Installed GUI did not expose local health endpoint' }
+            Write-Host "Installed app started OK from $dest"
+          } finally {
+            if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+            Get-Process -Name aria2c -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          }
+      - name: Verify installer and record checksums
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Get-ChildItem dist -Filter '*-安装包.exe' | Select-Object -First 1
+          if ($null -eq $installer) { throw 'Installer executable was not generated' }
+          Copy-Item $installer.FullName 'dist/baifan-downloader-0.10.103-setup.exe'
+          $sha = (Get-FileHash 'dist/baifan-downloader-0.10.103-setup.exe' -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$sha  baifan-downloader-0.10.103-setup.exe" | Out-File -Encoding ascii 'dist/SHA256SUMS.txt'
+          "Install candidate. Not a published Release. CI build and startup smoke verified; real download/BT and installer UI still require acceptance." | Out-File -Encoding utf8 'dist/BUILD_STATUS.txt'
+          Write-Host "SHA256 $sha"
+      - name: Upload candidate installer
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: baifan-windows-installer-candidate
+          path: |
+            dist/baifan-downloader-0.10.103-setup.exe
+            dist/SHA256SUMS.txt
+            dist/BUILD_STATUS.txt
+          retention-days: 14
+          if-no-files-found: error
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: baifan-installer-build-diagnostics
+          path: |
+            build/
+            dist/BaiFanDownloader/logs/
+          retention-days: 5
+          if-no-files-found: ignore
