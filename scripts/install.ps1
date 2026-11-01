@@ -3,16 +3,19 @@
  白饭下载器一键安装脚本
  用法：
    powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
-   powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Repo "你的GitHub用户名/baifan-downloader" -Tag "v0.10.103"
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Repo "你的GitHub用户名/baifan-downloader" -Tag "v0.10.103-preview1"
 #>
 param(
     [string]$Repo = "king1054-maker/baifan-downloader",
-    [string]$Tag = "v0.10.103",
+    [string]$Tag = "v0.10.103-preview1",
     [switch]$SkipHashCheck
 )
 
 $ErrorActionPreference = "Stop"
-$asset = "baifan-downloader-$($Tag.TrimStart('v'))-setup.exe"
+# Preview release tag includes a suffix, while the installer's filename uses the base app version.
+$matched = [regex]::Match($Tag, '^v?(\d+\.\d+\.\d+)')
+if (-not $matched.Success) { throw "不支持的发行标签: $Tag" }
+$asset = "baifan-downloader-$($matched.Groups[1].Value)-setup.exe"
 $base = "https://github.com/$Repo/releases/download/$Tag"
 $tmp = Join-Path $env:TEMP ("baifan-" + [guid]::NewGuid().ToString("N") + ".exe")
 
