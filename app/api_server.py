@@ -565,11 +565,14 @@ class _Handler(BaseHTTPRequestHandler):
         while time.time() < deadline:
             st = self.ctx.rpc.call("aria2.tellStatus", [gid])
             status = st.get("status")
-            if status in ("complete", "error", "removed"):
+            seeding = status == "active" and str(st.get("seeder", "")).lower() == "true"
+            download_finished = status == "complete" or seeding
+            if download_finished or status in ("error", "removed"):
                 task = task_json(st, self.ctx.store.get(gid))
-                if status == "complete" and do_verify:
+                task["download_complete"] = download_finished
+                if download_finished and do_verify:
                     task["verify"] = self.ctx.verify_gid(gid)
-                return self._send({"ok": status == "complete", "done": True, "task": task})
+                return self._send({"ok": download_finished, "done": True, "task": task})
             time.sleep(interval)
 
         st = self.ctx.rpc.call("aria2.tellStatus", [gid])
