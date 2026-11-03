@@ -97,6 +97,8 @@ class TaskRow:
     file_paths: list[str] = field(default_factory=list)   # 种子内文件路径（起名用）
     uri: str = ""              # 原始链接/磁力（种子库留档、查重用）
     is_history: bool = False   # 从 tasks.json/磁盘补回来的已完成记录（不是 aria2 当前任务）
+    followed: tuple[str, ...] = ()   # 取种子任务 followedBy 出来的真任务 gid（aria2 会换新 gid）
+    following: str = ""              # 真任务记的"我跟着谁"（aria2 原生字段）
 
     @property
     def state(self) -> str:
@@ -290,6 +292,8 @@ def row_from_aria2(d: dict[str, Any], meta: dict[str, dict] | None = None) -> Ta
         title=str(m.get("title") or ""),
         file_paths=[str(f.get("path") or "") for f in files if f.get("path")],
         uri=str(m.get("uri") or ""),
+        followed=tuple(str(g) for g in (d.get("followedBy") or ()) if g),
+        following=str(d.get("following") or ""),
     )
 
 

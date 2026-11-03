@@ -238,6 +238,10 @@ FILTER_HINTS = {
 STATE_ORDER = {"下载中": 0, "做种中": 1, "等待中": 2, "已暂停": 3, "错误": 4,
                "已完成": 5, "已移除": 6}
 
+# 磁力「取种子 → 等选文件」最多跟踪 3 分钟；超时就清掉待办，
+# 免得元数据一直没到 / 真任务被用户删掉时 _await_pick 越攒越多。
+PICK_WAIT_MAX = 180.0
+
 
 class PieceMap(QWidget):
     """分块完成图：绿色 = 已有，蓝色 = 下载中，灰色 = 缺失。"""
@@ -357,9 +361,7 @@ class MainWindow(QMainWindow):
         self._bg_timer = QTimer(self)
         self._bg_timer.timeout.connect(self._next_background)
         try:
-            if not self.settings.get("bg_defaults_seeded"):
-                background.seed_defaults()
-                self.settings["bg_defaults_seeded"] = True
+            if background.ensure_defaults_once(self.settings) >= 0:
                 config.save(self.settings)
         except Exception:  # noqa: BLE001
             pass
@@ -1034,11 +1036,9 @@ class MainWindow(QMainWindow):
             self.pet.reload_skins()
 
     def _apply_settings(self) -> None:
-        # 用户点了「确定」才动注册表：开机自启开关
+        # 用户点了「确定」才动注册表：开机自启开关（源码/测试版不写启动项）
         try:
-            want = bool(self.settings.get("autostart", True))
-            if want != shell_integration.is_autostart():
-                shell_integration.set_autostart(want)
+            shell_integration.sync_autostart(self.settings)
         except Exception:  # noqa: BLE001
             pass
         config.save(self.settings)
@@ -1715,6 +1715,7 @@ class MainWindow(QMainWindow):
         n = 0
         dupes = 0
         err = ""
+        magnet_pending = 0     # 磁力：取种子/选文件完会自动开始的任务数（给状态栏提示用）
         for name, b64 in req.torrents:
             try:
                 gid, why = add_checked(rpc, "aria2.addTorrent", [b64, [], opts])
@@ -1747,8 +1748,17 @@ class MainWindow(QMainWindow):
                 if is_magnet:
                     torrent_keep.save_magnet(u, gid=gid, dir_=req.dir)
                 if req.choose_files and is_magnet:
-                    # 磁力要先等元数据，snapshot 里再弹选文件
-                    self._await_pick[gid] = {"unpause": not req.paused}
+                    # 磁力要先等元数据；拿到后 aria2 会**换一个新 gid** 建真任务，
+                    # 所以待办里要带上 infohash，snapshot 里按 followedBy/infohash 接上。
+                    self._await_pick[gid] = {
+                        "unpause": not req.paused,
+                        "ihash": dedupe.magnet_hash(u),
+                        "since": time.time(),
+                        "meta_gid": gid,
+                    }
+                    magnet_pending += 1
+                elif is_magnet and not req.paused and not req.pause_metadata:
+                    magnet_pending += 1
             except Aria2Error as exc:
                 err = str(exc)
         self.store.save()
@@ -1756,8 +1766,12 @@ class MainWindow(QMainWindow):
         if err:
             QMessageBox.warning(self, "部分任务添加失败", err)
         if n:
-            self.lb_state.setText("已添加 %d 个任务" % n
-                                  + ("（%d 个之前加过了）" % dupes if dupes else ""))
+            msg = "已添加 %d 个任务" % n
+            if magnet_pending:
+                msg += "（%d 个磁力正在取种子，拿到元数据后自动开始）" % magnet_pending
+            if dupes:
+                msg += "（%d 个之前加过了）" % dupes
+            self.lb_state.setText(msg)
         elif dupes:
             self.lb_state.setText("%d 个之前就加过了，没重复添加" % dupes)
         else:
@@ -2200,6 +2214,18 @@ class MainWindow(QMainWindow):
                 self.lb_state.setText("暂停失败：%s" % str(exc)[:60])
             self._poke()
             return
+        # 还没下完的「暂停 / 排队」任务：双击 = 继续下载。
+        # 以前这里一律走"打开文件"，文件都没下完自然什么都不发生，
+        # 用户只能去点「开始全部任务」（2026-11-02 报的就是这个）。
+        if (r.status_code in ("paused", "waiting") and not r.is_finished
+                and not r.is_meta and not r.is_history and not r.error):
+            try:
+                self.engine.rpc.call("aria2.unpause", [r.gid])
+                self.lb_state.setText("继续下载：%s" % r.name)
+            except Aria2Error as exc:
+                self.lb_state.setText("继续失败：%s" % str(exc)[:60])
+            self._poke()
+            return
         if not self._open_guard(r):
             return
         name = r.name if r.file_count <= 1 else ""
@@ -2486,31 +2512,83 @@ class MainWindow(QMainWindow):
             on_file=(lambda t=target: intents.open_default(t)) if can_open else None,
         )
 
+    def _find_follow_row(self, info: dict, rows: list[TaskRow]) -> TaskRow | None:
+        """元数据任务已经不在快照里时，按 infohash 找回 followedBy 出来的真任务。
+
+        真实 aria2 里取种子任务是 M，拿到元数据后另起真任务 R（新 gid，旧 gid 会消失）。
+        只按 M 找行会永远等不到 R；这里用 infohash 兜底（只查还没下完的 paused/waiting，
+        不会对每个任务都打 RPC）。
+        """
+        meta_gid = str(info.get("meta_gid") or "")
+        ihash = str(info.get("ihash") or "").lower()
+        if not meta_gid and not ihash:
+            return None
+        rpc = self.engine.rpc
+        for r in rows:
+            if r.is_meta or r.is_history or r.error:
+                continue
+            if r.status_code not in ("paused", "waiting"):
+                continue
+            if meta_gid and r.following == meta_gid:
+                return r
+            if not ihash or rpc is None:
+                continue
+            try:
+                st = rpc.call("aria2.tellStatus", [r.gid, ["infoHash"]])
+            except Aria2Error:
+                continue
+            got = str((st or {}).get("infoHash") or "").lower()
+            if got and got == ihash:
+                return r
+        return None
+
     def _scan_pending_picks(self, rows: list[TaskRow]) -> None:
+        """磁力「取种子 → 选文件 / 自动开始」的收尾。
+
+        真实 aria2 的流程是：元数据任务 M 完成 → 另起真任务 R（**换新 gid**），
+        并把 R 写进 M 的 followedBy。以前这里只按 M 的 gid 在快照里找行：
+          * 单文件磁力：永远等不到 R，真任务一直 paused，用户只能点「开始全部任务」；
+          * 多文件磁力：选文件框根本不弹，跟着全量下载。
+        2026-11-02 用户报的「新建磁力不出现、要全部开始才动」就是这个。
+        """
         if not self._await_pick:
             return
         by_gid = {r.gid: r for r in rows}
+        now = time.time()
+        # 1) 元数据任务已经挂出真任务：把待办挪到真 gid 上（一次快照内就能接上）
+        for gid, info in list(self._await_pick.items()):
+            r = by_gid.get(gid)
+            if r is None or not r.followed:
+                continue
+            for new_gid in r.followed:
+                if new_gid not in self._await_pick:
+                    self._await_pick[new_gid] = dict(info)
+            self._await_pick.pop(gid, None)
+        # 2) 处理真任务：多文件弹选文件框，单文件直接继续
         for gid, info in list(self._await_pick.items()):
             r = by_gid.get(gid)
             if r is None:
-                continue
+                r = self._find_follow_row(info, rows)
+                if r is None:
+                    if now - float(info.get("since") or now) > PICK_WAIT_MAX:
+                        self._await_pick.pop(gid, None)
+                    continue
+                gid = r.gid
             if r.error:
                 self._await_pick.pop(gid, None)
                 continue
-            # 暂停中的 BT 任务 totalLength 会是 0，只能用文件数判断元数据是否到位
+            if r.is_meta:
+                continue                       # 元数据还没到位，等下一次快照
+            self._await_pick.pop(gid, None)
             if r.file_count > 1:
-                self._await_pick.pop(gid, None)
                 QTimer.singleShot(
-                    0, lambda g=gid, u=bool(info.get("unpause")): self._open_file_picker(g, u))
-            elif r.file_count == 1 and not r.is_meta:
-                # 单文件磁力没什么可选的：不自动开始会一直卡在「拿种子后选文件」
-                # 的暂停状态（用户 2026-10-22 遇到：新建磁力后 0% 一直不动）。
-                self._await_pick.pop(gid, None)
-                if info.get("unpause"):
-                    try:
-                        self.engine.rpc.call("aria2.unpause", [gid])
-                    except Aria2Error:
-                        pass
+                    0, lambda g=r.gid, u=bool(info.get("unpause")): self._open_file_picker(g, u))
+            elif info.get("unpause") and r.status_code in ("paused", "waiting"):
+                # 单文件磁力没什么可选的：不自动开始会一直卡在「拿种子后选文件」的暂停状态
+                try:
+                    self.engine.rpc.call("aria2.unpause", [r.gid])
+                except Aria2Error:
+                    pass
 
     # ================= 完整性校验 =================
     def _maybe_verify(self, rows: list[TaskRow]) -> None:

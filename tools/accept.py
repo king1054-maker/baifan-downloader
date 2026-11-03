@@ -870,7 +870,9 @@ def section_b10(env: Env) -> None:
     opened2: list[str] = []
     shim_p = type("S", (), {})()
     shim_p.model = m_paused
+    shim_p.engine = type("E", (), {"rpc": _DblRpc()})()
     shim_p.lb_state = type("L", (), {"setText": lambda _self, _s: None})()
+    shim_p._poke = lambda: None
     shim_p._open_guard = lambda r: True
     real_open2 = intents.open_path
     intents.open_path = lambda p, n=1: (opened2.append(str(p)), "已打开")[1]
@@ -878,8 +880,9 @@ def section_b10(env: Env) -> None:
         MainWindow._on_double_click(shim_p, m_paused.index(0, mm.COL_INDEX["name"]))
     finally:
         intents.open_path = real_open2
-    ok("B10.9c", "双击已暂停的任务 = 打开，不会把它当成下载中", len(opened2) == 1,
-       "打开=%s" % opened2)
+    ok("B10.9c", "双击暂停中、还没下完的任务 = 继续下载（2026-11-03 改；以前是“打开”）",
+       ("aria2.unpause", ["p1"]) in shim_p.engine.rpc.calls and not opened2,
+       str(shim_p.engine.rpc.calls))
 
     # ---- 编辑器本身 ----
     host = QWidget()
@@ -1699,8 +1702,17 @@ def section_b15(env) -> None:
 
 
 def section_b16() -> None:
-    """发行版采用原创水波轻响作为默认音效；测试音量和自定义音效功能。"""
-    print("\n=== B16. 提示音 / 音量 ===")
+    """提示音：ciallo 做默认 + 音量可调（v0.10.7）。
+
+    用户自己把 ciallo 的两个 wav 下下来了，要求：
+      1. 用 CIALLO.WAV 当默认提示音
+      2. "这个声音不要太大"
+      3. 设置里能调音量
+
+    做法：文件进来先压到峰值 55%（-5dB 左右，跟 ding/bite 一个量级），
+    播放走 MCI（winsound 没有音量参数），默认音量 60%，设置里 0–100 可调。
+    """
+    print("\n=== B16. 提示音 ciallo / 音量 ===")
     import wave
     from PySide6.QtWidgets import QApplication
     app = QApplication.instance() or QApplication(sys.argv)   # noqa: F841
@@ -1713,29 +1725,33 @@ def section_b16() -> None:
     app.setStyleSheet(theme.QSS)
 
     snd = notify.SOUND_DIR
-    for fn in ("soft_water.wav",):
-        ok("B16.1", "发行版原创内置音效存在", (snd / fn).is_file(), str(snd / fn))
+    for fn in ("ciallo.wav", "ciallo_alt2.wav"):
+        f = snd / fn
+        ok("B16.1" if fn == "ciallo.wav" else "B16.2",
+           "%s 在包里" % fn, f.exists() and f.stat().st_size > 50000,
+           "%s" % (f.stat().st_size if f.exists() else "缺失"))
 
-    # 音量峰值检查，确保内置音效不会出现削波。
+    # 音量压过：峰值不能顶到 32767，否则跟别的提示音比就是"炸"
     def peak_of(p) -> int:
-        with wave.open(str(p)) as w:
-            frames = w.readframes(w.getnframes())
+        w = wave.open(str(p))
+        frames = w.readframes(w.getnframes())
+        w.close()
         top = 0
         for i in range(0, len(frames), 2):
-            value = abs(int.from_bytes(frames[i:i + 2], "little", signed=True))
-            if value > top:
-                top = value
+            v = abs(int.from_bytes(frames[i:i + 2], "little", signed=True))
+            if v > top:
+                top = v
         return top
 
-    pk = peak_of(snd / "soft_water.wav")
-    ok("B16.3", "soft_water.wav 的峰值不超过 20000",
+    pk = peak_of(snd / "ciallo.wav")
+    ok("B16.3", "ciallo.wav 的峰值压到 20000 以下（原文件顶到 28762，太响）",
        0 < pk < 20000, "峰值 %d" % pk)
 
-    ok("B16.4", "默认提示音是原创 soft_water.wav",
-       notify.DEFAULT_SOUND == "soft_water.wav"
-       and notify.sound_path("").name == "soft_water.wav", notify.sound_path("").name)
-    ok("B16.5", "水波音在内置音效下拉列表首位",
-       [fn for _l, fn in notify.BUILTIN_SOUNDS][:1] == ["soft_water.wav"],
+    ok("B16.4", "默认提示音就是 ciallo.wav",
+       notify.DEFAULT_SOUND == "ciallo.wav"
+       and notify.sound_path("").name == "ciallo.wav", notify.sound_path("").name)
+    ok("B16.5", "两个 ciallo 版本都在下拉里，且 ciallo 排第一",
+       [fn for _l, fn in notify.BUILTIN_SOUNDS][:2] == ["ciallo.wav", "ciallo_alt2.wav"],
        str([fn for _l, fn in notify.BUILTIN_SOUNDS]))
 
     # ---- 播放真的把音量传下去了吗 ----
@@ -1743,16 +1759,16 @@ def section_b16() -> None:
     real_play = notify._play_wav_qt
     notify._play_wav_qt = lambda path, vol: (calls.append((path.name, vol)), True)[1]
     try:
-        notify.play_sound("soft_water.wav", 45)
+        notify.play_sound("ciallo.wav", 45)
         ok("B16.6", "音量 45% 会原样传到播放层（不是固定值）",
            calls and calls[-1][1] == 45, str(calls[-1:] if calls else []))
 
         calls.clear()
-        notify.play_sound("soft_water.wav", 0)
+        notify.play_sound("ciallo.wav", 0)
         ok("B16.7", "音量 0 = 静音，干脆不播", not calls, str(calls))
 
         calls.clear()
-        notify.play_sound("soft_water.wav")
+        notify.play_sound("ciallo.wav")
         ok("B16.8", "不传音量就用默认 60%",
            calls and calls[-1][1] == notify.DEFAULT_VOLUME,
            str(calls[-1:] if calls else []))
@@ -2366,13 +2382,18 @@ def section_b21(env) -> None:
 
 
 def section_b22(env) -> None:
-    """默认选项 + 干饭手册按钮 + 新图标（v0.10.16）。
+    """默认选项 + 干饭手册按钮 + 新图标（v0.10.16；v0.10.106 改默认不开机自启）。
 
-    用户要求：
+    用户要求（v0.10.16）：
       1. 开机自动启动、最小化缩托盘都是默认；
       2. 工具栏「AI 调用接口」旁边再加一个「大肥鱼干饭手册」，点开就是设置，
          前面挂上那张没有标识的立绘 —— 目的是让人愿意点进去把软件调成自己的。
       3. 应用图标换成他给的方形头像。
+
+    v0.10.106（2026-11-01）：用户发现「任务管理器 → 启动应用」里出现
+    pythonw.exe run.py —— 跑 accept.py 时源码版把自己写进了 HKCU Run，
+    登录就自动拉起测试版。现在默认不开机自启，且源码/测试版启动绝不写启动项；
+    本段用独立的测试值名验注册表读写，全程不碰用户真实的那一条。
     """
     print("\n=== B22. 默认选项 / 干饭手册 / 图标 ===")
     from PySide6.QtWidgets import QApplication, QToolBar, QToolButton
@@ -2385,27 +2406,52 @@ def section_b22(env) -> None:
     app.setStyle("Fusion")
     app.setStyleSheet(theme.QSS)
 
+    import winreg
+
+    def _run_value(name: str) -> str:
+        """直接读 HKCU\\...\\Run 里的原始值（不经过路径比对）。"""
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, shell_integration.RUN_KEY) as k:
+                return str(winreg.QueryValueEx(k, name)[0])
+        except OSError:
+            return ""
+
     d = config.DEFAULTS
-    ok("B22.1", "默认开机自启", d.get("autostart") is True, str(d.get("autostart")))
+    ok("B22.1", "默认不开机自启（测试/源码版绝不自注册）",
+       d.get("autostart") is False, str(d.get("autostart")))
     ok("B22.2", "默认最小化缩到托盘", d.get("minimize_to_tray") is True,
        str(d.get("minimize_to_tray")))
     ok("B22.3", "默认关闭窗口也留在托盘继续下", d.get("close_to_tray") is True)
 
-    # 注册表读写（跑完还原成原来的状态，别在用户机器上留手尾）
-    before = shell_integration.is_autostart()
+    # 注册表读写：用独立的测试值名，绝不碰用户真实的 BaiFanDownloader 启动项
+    real_value = shell_integration.RUN_VALUE
+    real_before = _run_value(real_value)
+    test_value = "BaiFanDownloaderAcceptTest"
     try:
+        shell_integration.RUN_VALUE = test_value
         shell_integration.set_autostart(True)
-        ok("B22.4", "开机自启能写进 HKCU\\...\\Run 并读回来",
+        ok("B22.4", "开机自启能写进 HKCU\\...\\Run（测试值名）并读回来",
            shell_integration.is_autostart() is True)
         ok("B22.5", "启动命令用的是 pythonw（开机不出黑框）",
            "pythonw" in shell_integration.startup_command().lower()
            or getattr(__import__("sys"), "frozen", False),
            shell_integration.startup_command())
         shell_integration.set_autostart(False)
-        ok("B22.6", "关掉之后键被删掉（不会残留）",
+        ok("B22.6", "关掉之后测试值被删掉（不会残留）",
            shell_integration.is_autostart() is False)
     finally:
-        shell_integration.set_autostart(before)
+        shell_integration.set_autostart(False)       # 清掉测试值
+        shell_integration.RUN_VALUE = real_value
+    ok("B22.14", "跑测试不碰用户真实的开机自启项",
+       _run_value(real_value) == real_before, "%r" % (real_before,))
+
+    # 源码/测试版启动：sync_autostart 必须是空操作
+    snap = _run_value(real_value)
+    touched = shell_integration.sync_autostart({"autostart": True})
+    ok("B22.15", "源码/测试版启动不会把自己写进「启动应用」",
+       touched is False and _run_value(real_value) == snap
+       and shell_integration.is_autostart() is False,
+       "sync 返回 %r" % (touched,))
 
     # 新图标
     ico = paths.ASSET_DIR / "icons" / "whale.ico"
@@ -2414,8 +2460,9 @@ def section_b22(env) -> None:
     ok("B22.8", "手册按钮的图在（handbook.png）",
        (paths.ASSET_DIR / "icons" / "handbook.png").exists())
 
+    # 不在这里改 autostart：MainWindow 初始化/关闭时会 config.save()，
+    # 把测试用的 True 写回 data/settings.json，下次源码启动又按“想自启”处理。
     settings = dict(env.settings, show_pet=False)
-    settings["autostart"] = True
     win = MainWindow(env.engine, settings)
     win.resize(1300, 700)
     win.show()
@@ -2456,13 +2503,15 @@ def section_b22(env) -> None:
 
     from app.ui.options_dialog import OptionsDialog
 
-    dlg = OptionsDialog(dict(settings), None)
-    ok("B22.12", "设置里有「开机自动启动」且默认勾着",
-       hasattr(dlg, "chk_autostart") and dlg.chk_autostart.isChecked())
-    dlg.chk_autostart.setChecked(False)
+    # 新装默认值：不带 autostart 键时复选框是空的
+    dlg_settings = {k: v for k, v in settings.items() if k != "autostart"}
+    dlg = OptionsDialog(dlg_settings, None)
+    ok("B22.12", "设置里有「开机自动启动」且默认不勾",
+       hasattr(dlg, "chk_autostart") and not dlg.chk_autostart.isChecked())
+    dlg.chk_autostart.setChecked(True)
     dlg._collect()
-    ok("B22.13", "取消勾选会写进设置（真正改注册表在点确定时）",
-       dlg.settings.get("autostart") is False, str(dlg.settings.get("autostart")))
+    ok("B22.13", "勾上会写进设置（真正改注册表在点确定时，且只有安装版生效）",
+       dlg.settings.get("autostart") is True, str(dlg.settings.get("autostart")))
     dlg.close()
 
     win.worker.stop()
@@ -2887,7 +2936,7 @@ def section_b29() -> None:
 
     base = r"Control Panel\NotifyIconSettings"
     key_name = "BaiFanAcceptTest_" + uuid.uuid4().hex[:10]
-    fake_exe = r"C:\Users\AERO\AppData\Local\Temp\baifan_tray_test\BaiFanTest.exe"
+    fake_exe = r"C:\BaiFanTest\baifan_tray_test\BaiFanTest.exe"
     try:
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, base + "\\" + key_name) as k:
             winreg.SetValueEx(k, "ExecutablePath", 0, winreg.REG_SZ, fake_exe)
@@ -2906,6 +2955,71 @@ def section_b29() -> None:
             winreg.DeleteKey(winreg.HKEY_CURRENT_USER, base + "\\" + key_name)
         except OSError:
             pass
+
+
+# ============================================================
+def section_b30() -> None:
+    """背景图库：示例只铺一次 / 删除真的删掉（v0.10.107）。
+
+    用户：在「背景轮换库」里选一张删掉，下次启动它又回来了；
+    添加的图应该复制到安装目录里的图片文件夹，删也从那里删。
+
+    根因：`bg_defaults_seeded` 没写进 `config.DEFAULTS`，而 `config.load()`
+    只允许 DEFAULTS 里的键通过 → 这个标记每次启动都被丢掉，程序永远以为
+    "没铺过示例图"，于是又把 assets/backgrounds 里的示例复制回来。
+    """
+    print("\n=== B30. 背景图库持久化 ===")
+    import stat
+    import tempfile
+
+    from app import background, config, paths
+
+    ok("B30.1", "bg_defaults_seeded 在 DEFAULTS 里（不会被 config.load 过滤掉）",
+       "bg_defaults_seeded" in config.DEFAULTS)
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        old_data, old_default = paths.DATA_DIR, background.DEFAULT_DIR
+        paths.DATA_DIR = tmp / "data"
+        background.DEFAULT_DIR = paths.ASSET_DIR / "backgrounds"
+        try:
+            settings: dict = {}
+            n1 = background.ensure_defaults_once(settings)
+            ok("B30.2", "第一次启动铺示例图并记下标记",
+               n1 >= 1 and settings.get("bg_defaults_seeded") is True
+               and bool(background.images()), "铺了 %d 张" % n1)
+            victim = background.images()[0]
+            n_rm, err = background.remove([str(victim)])
+            ok("B30.3", "删除选中会真的从图库目录删掉文件",
+               n_rm == 1 and not victim.exists() and not err, err)
+            n2 = background.ensure_defaults_once(settings)
+            ok("B30.4", "再次启动不会把删掉的示例图铺回来（用户看到的“又出现”）",
+               n2 == -1 and not victim.exists(),
+               "ensure 返回 %s，还在=%s" % (n2, victim.exists()))
+            ro = background.folder() / "readonly.jpg"
+            ro.write_bytes(b"x")
+            os.chmod(str(ro), stat.S_IREAD)
+            n_ro, err_ro = background.remove([str(ro)])
+            ok("B30.5", "只读的图也能删掉（失败会带原因，不再静默失败）",
+               n_ro == 1 and not ro.exists(), err_ro)
+            outside = tmp / "outside.jpg"
+            outside.write_bytes(b"x")
+            n_out, _err = background.remove([str(outside)])
+            ok("B30.6", "只删图库里的副本，不动用户选图时的原文件",
+               n_out == 0 and outside.exists())
+        finally:
+            paths.DATA_DIR = old_data
+            background.DEFAULT_DIR = old_default
+
+    with tempfile.TemporaryDirectory() as td:
+        old_file = paths.SETTINGS_FILE
+        paths.SETTINGS_FILE = Path(td) / "settings.json"
+        try:
+            config.save(dict(config.DEFAULTS, bg_defaults_seeded=True))
+            ok("B30.7", "标记写进 settings.json 后读回来还是 True",
+               config.load().get("bg_defaults_seeded") is True)
+        finally:
+            paths.SETTINGS_FILE = old_file
 
 
 # ============================================================
@@ -3179,6 +3293,112 @@ def section_b23(env) -> None:
         _st.note("g1", name="renamed.mkv")
         _ok_origin = _st.get_origin("g1") == "original.mkv"
     ok("B23.41", "反复改名不会覆盖最初的真实文件名", _ok_origin)
+
+    from app import api_server, integrity
+    with tempfile.TemporaryDirectory() as _td:
+        _p = Path(_td) / "kept.txt"
+        _p.write_bytes(b"abc")
+        _rep = integrity.check_task([
+            {"path": str(_p), "length": "3", "completedLength": "3",
+             "selected": "true"},
+            {"path": str(Path(_td) / "unselected.bin"), "length": "999",
+             "completedLength": "0", "selected": "false"},
+        ], _td)
+    ok("B23.42", "只校验用户勾选的文件，未勾选文件不再误判",
+       _rep["ok"] and _rep["file_count"] == 1
+       and _rep["skipped_count"] == 1, str(_rep))
+
+    with tempfile.TemporaryDirectory() as _std:
+        _sf = Path(_std) / "seed.bin"
+        _sf.write_bytes(b"abc")
+        _sfile = {"path": str(_sf), "length": "3",
+                  "completedLength": "3", "selected": "true"}
+
+        class _SeederRpc:
+            def call(self, method, params=None):
+                return {"status": "active", "seeder": "true",
+                        "completedLength": "3", "totalLength": "3",
+                        "files": [_sfile], "dir": _std}
+        _ctx = api_server.ApiContext(_SeederRpc(), win.store, {})
+        ok("B23.43", "BT 做种中的 active 任务也能通过完成校验",
+           bool(_ctx.verify_gid("seed-gid").get("ok")))
+
+    # ---- 磁力「取种子」→ 真任务换新 gid（v0.10.107） ----
+    # 真实 aria2：元数据任务 M 完成后另起真任务 R（新 gid），
+    # 把 R 写进 M 的 followedBy。以前的测试假定了 M == R（同一个 gid），
+    # 所以一直没发现「单文件磁力不自动开始 / 多文件不弹选文件框」。
+    from app.ui.models import TaskRow as _TR2
+
+    class _FollowRpc:
+        def __init__(self):
+            self.calls = []
+            self.infohash = "aa" * 20
+
+        def call(self, method, params=None):
+            self.calls.append((method, params))
+            if method == "aria2.tellStatus":
+                return {"infoHash": self.infohash}
+            return "1"
+
+    _real_rpc2 = win.engine.rpc
+    _fr2 = _FollowRpc()
+    win.engine.rpc = _fr2
+
+    _meta = _TR2(gid="meta1", name="（等待元数据）")
+    _meta.status_code = "complete"
+    _meta.is_meta = True
+    _meta.followed = ("real1",)
+    _single = _TR2(gid="real1", name="单文件磁力.mkv")
+    _single.status_code = "paused"
+    _single.file_count = 1
+    win._await_pick = {"meta1": {"unpause": True, "ihash": "aa" * 20,
+                                 "since": time.time(), "meta_gid": "meta1"}}
+    win._scan_pending_picks([_meta, _single])
+    ok("B23.44", "取种子换新 gid 后，单文件磁力跟着自动开始（真实 followedBy 行为）",
+       ("aria2.unpause", ["real1"]) in _fr2.calls
+       and "meta1" not in win._await_pick
+       and "real1" not in win._await_pick, str(_fr2.calls))
+
+    _picked = []
+    _real_picker = win._open_file_picker
+    win._open_file_picker = lambda g, u=False: _picked.append((g, u))
+    _meta2 = _TR2(gid="meta2", name="（等待元数据）")
+    _meta2.status_code = "complete"
+    _meta2.is_meta = True
+    _meta2.followed = ("real2",)
+    _multi = _TR2(gid="real2", name="合集文件夹")
+    _multi.status_code = "paused"
+    _multi.file_count = 5
+    win._await_pick = {"meta2": {"unpause": True, "ihash": "bb" * 20,
+                                 "since": time.time(), "meta_gid": "meta2"}}
+    win._scan_pending_picks([_meta2, _multi])
+    for _ in range(4):
+        app.processEvents()
+    win._open_file_picker = _real_picker
+    ok("B23.45", "多文件磁力：选文件框开在真任务 gid 上（以前开错 gid/根本不弹）",
+       _picked == [("real2", True)], str(_picked))
+
+    _fr2.infohash = "cc" * 20
+    _gone = _TR2(gid="real3", name="单文件磁力3.mkv")
+    _gone.status_code = "paused"
+    _gone.file_count = 1
+    win._await_pick = {"meta3": {"unpause": True, "ihash": "cc" * 20,
+                                 "since": time.time(), "meta_gid": "meta3"}}
+    win._scan_pending_picks([_gone])
+    ok("B23.46", "元数据 gid 已从列表消失时，按 infohash 找回真任务照样自动开始",
+       ("aria2.unpause", ["real3"]) in _fr2.calls, str(_fr2.calls))
+
+    # ---- 双击「暂停中、还没下完」= 继续 ----
+    _paused_row = _TR2(gid="p2", name="暂停的任务.mkv")
+    _paused_row.status_code = "paused"
+    _paused_row.file_count = 1
+    win.model.set_rows([_paused_row])
+    win._on_double_click(win.model.index(0, 0))
+    ok("B23.47", "双击暂停中、还没下完的任务 = 继续下载（不再是“打开文件”空操作）",
+       ("aria2.unpause", ["p2"]) in _fr2.calls, str(_fr2.calls))
+    win._await_pick = {}
+    win.engine.rpc = _real_rpc2
+
     win.close()
     win.deleteLater()
     for _ in range(4):
@@ -3230,6 +3450,8 @@ def main(argv: list[str]) -> int:
             section_b28()
         if want("B29"):
             section_b29()
+        if want("B30"):
+            section_b30()
         if any(want(k) for k in ("B6", "B7", "B10", "B15", "B17", "B19", "B21", "B22", "B23", "C")):
             dl = CACHE / "dl"
             if dl.exists():

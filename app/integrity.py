@@ -71,7 +71,9 @@ def _check_mp4(p: Path, c: Check) -> None:
     tail = _read(p, tail_start, min(TAIL, size))
     pos = tail.rfind(b"moov")
     if pos < 0:
-        c.fail("找不到 moov 索引块：文件被截断，或仍在写入")
+        # 仅凭头部/尾部 2MB 不存在 moov 不能证明文件损坏：
+        # 分片 MP4、特殊封装或 moov 在中间时都可能误报，降级为提醒。
+        c.notes.append("未在头部/尾部找到 moov 索引，结构可疑（仅提醒，不判失败）")
         return
     # moov box 的 size 字段在 "moov" 前 4 字节
     if pos >= 4:

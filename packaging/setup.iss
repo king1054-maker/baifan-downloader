@@ -4,7 +4,7 @@
 
 #define AppName        "白饭下载器"
 #define AppNameEn      "BaiFan Downloader"
-#define AppVersion     "0.10.103"
+#define AppVersion     "0.10.107"
 #define AppPublisher   "白饭下载器"
 #define AppExe         "BaiFanDownloader.exe"
 #define AppId          "{{8F3A1C2E-5B7D-4E9A-9C11-B1A2F3D4E5F6}"
@@ -45,7 +45,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "在桌面放一个「{#AppName}」"; GroupDescription: "快捷方式："; Flags: checkedonce
 Name: "torrentassoc"; Description: "用「{#AppName}」打开 .torrent 种子文件"; GroupDescription: "文件关联："; Flags: checkedonce
-Name: "startup";      Description: "开机自动启动（常驻托盘，随时接链接）"; GroupDescription: "启动项："; Flags: unchecked
+; 开机自启不再放安装向导里：统一由程序设置页管（默认关）。
+; 两处都能写会互相打架——安装器勾了，程序启动按默认值又把它删掉。
 
 [Files]
 ; 整个 onedir 产物原样铺进去（含 _internal、assets、bin\aria2c.exe）
@@ -72,7 +73,8 @@ Root: HKCU; Subkey: "Software\Classes\Applications\{#AppExe}"; ValueType: string
 Root: HKCU; Subkey: "Software\Classes\Applications\{#AppExe}\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""
 Root: HKCU; Subkey: "Software\Classes\Applications\{#AppExe}\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#AppExe},0"
 
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "BaiFanDownloader"; ValueData: """{app}\{#AppExe}"""; Flags: uninsdeletevalue; Tasks: startup
+; 注：不再写 HKCU\...\Run。开机自启只在程序里「设置 → 常规」勾选后由
+; 打包版自己写；源码/测试版任何时候都不写，避免把 pythonw 测试版塞进启动项。
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "立刻开饭（启动 {#AppName}）"; Flags: nowait postinstall skipifsilent

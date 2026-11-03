@@ -193,13 +193,22 @@ class BackgroundPickerDialog(QDialog):
         b_folder.setToolTip("先选一个文件夹，再勾选其中要加入轮换的图片")
         b_folder.clicked.connect(self._add_from_folder)
         b_del = QPushButton("删除选中")
-        b_del.setToolTip("从轮换库删除选中的图（只删程序里的副本，不动原文件）")
+        b_del.setToolTip("从轮换库删除选中的图（只删程序目录里的副本，不动你选图时的原文件）")
         b_del.clicked.connect(self._delete_selected)
+        b_open = QPushButton("打开图片文件夹")
+        b_open.setToolTip("打开轮换库所在文件夹：添加的图都复制到这里，删也是删这里的副本")
+        b_open.clicked.connect(self._open_folder)
         bar.addWidget(b_add)
         bar.addWidget(b_folder)
         bar.addWidget(b_del)
+        bar.addWidget(b_open)
         bar.addStretch(1)
         outer.addLayout(bar)
+
+        self.lb_path = QLabel("")
+        self.lb_path.setStyleSheet("color:#6B7280;")
+        self.lb_path.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        outer.addWidget(self.lb_path)
 
         body = QHBoxLayout()
         self.list = QListWidget()
@@ -252,6 +261,7 @@ class BackgroundPickerDialog(QDialog):
         self.crop.set_image(None)
         imgs = background.images()
         self.lb_count.setText("当前轮换库：%d 张图片" % len(imgs))
+        self.lb_path.setText("图库位置（添加的图都复制到这里）：%s" % background.folder())
         for p in imgs:
             item = QListWidgetItem(QIcon(str(p)), p.name)
             item.setData(Qt.ItemDataRole.UserRole, str(p))
@@ -319,21 +329,37 @@ class BackgroundPickerDialog(QDialog):
             return
         if QMessageBox.question(
                 self, "删除图片",
-                "从轮换库删除这 %d 张图？\n（只删 data/background 里的副本，不动原文件）"
+                "从轮换库删除这 %d 张图？\n"
+                "只删程序目录里的副本（图库位置见上方），不会动你选图时的原文件。"
                 % len(items)) != QMessageBox.StandardButton.Yes:
             return
-        n = 0
-        for it in items:
-            p = Path(str(it.data(Qt.ItemDataRole.UserRole) or ""))
-            try:
-                if p.is_file() and p.parent == background.folder():
-                    p.unlink()
-                    n += 1
-            except OSError:
-                pass
+        paths_in = [str(it.data(Qt.ItemDataRole.UserRole) or "") for it in items]
+        names = [Path(p).name for p in paths_in]
+        n, err = background.remove(paths_in)
+        # 顺手清掉裁切框/锚点记录，下次同名图进来不会套用旧框
+        for key in ("bg_crops", "bg_anchors"):
+            box = self.settings.get(key)
+            if isinstance(box, dict):
+                for name in names:
+                    box.pop(name, None)
+        if str(self.settings.get("bg_current") or "") in names:
+            self.settings["bg_current"] = ""
         self._refresh()
         if n:
             self.lb_count.setText(self.lb_count.text() + "（已删除 %d 张）" % n)
+        if err:
+            QMessageBox.warning(
+                self, "有图片没删掉",
+                "下面这张没能删掉：\n%s\n\n可能是文件被别的程序占用；关掉占用它的程序"
+                "（或关掉本程序）后再删一次。" % err)
+
+    def _open_folder(self) -> None:
+        d = background.folder()
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(d)))
 
     def selected_paths(self) -> list[str]:
         return [i.data(Qt.ItemDataRole.UserRole)
@@ -448,7 +474,9 @@ class OptionsDialog(QDialog):
         form.addRow("", self.chk_close_tray)
 
         self.chk_autostart = QCheckBox("开机自动启动（登录 Windows 就常驻托盘）")
-        self.chk_autostart.setChecked(bool(self.settings.get("autostart", True)))
+        self.chk_autostart.setChecked(bool(self.settings.get("autostart", False)))
+        self.chk_autostart.setToolTip(
+            "只有安装版（打包 exe）才会写入开机启动项；源码/测试版怎么勾都不会写。")
         form.addRow("", self.chk_autostart)
 
         self.chk_min_tray = QCheckBox("最小化时缩到托盘")

@@ -5,6 +5,7 @@ on:
     branches:
       - build/windows-installer-candidate
       - feat/zero-friction-ai-install
+      - staging/v0.10.107-source
     paths:
       - '.github/workflows/windows-installer-candidate.yml'
       - 'packaging/**'
@@ -175,7 +176,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           Get-Process -Name aria2c -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-          $zip = 'dist/baifan-downloader-0.10.103-portable-win-x64.zip'
+          $zip = 'dist/baifan-downloader-0.10.107-portable-win-x64.zip'
           Compress-Archive -LiteralPath 'dist/BaiFanDownloader' -DestinationPath $zip -CompressionLevel Optimal
           if ((Get-Item $zip).Length -lt 10000000) { throw 'Portable ZIP unexpectedly small' }
           $unzipped = Join-Path $env:RUNNER_TEMP 'BaiFanPortableSmoke'
@@ -208,12 +209,12 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $installer = Get-ChildItem dist -Filter '*-安装包.exe' | Select-Object -First 1
           if ($null -eq $installer) { throw 'Installer executable was not generated' }
-          Copy-Item $installer.FullName 'dist/baifan-downloader-0.10.103-setup.exe'
-          $sha = (Get-FileHash 'dist/baifan-downloader-0.10.103-setup.exe' -Algorithm SHA256).Hash.ToLowerInvariant()
-          $zipName = 'baifan-downloader-0.10.103-portable-win-x64.zip'
+          Copy-Item $installer.FullName 'dist/baifan-downloader-0.10.107-setup.exe'
+          $sha = (Get-FileHash 'dist/baifan-downloader-0.10.107-setup.exe' -Algorithm SHA256).Hash.ToLowerInvariant()
+          $zipName = 'baifan-downloader-0.10.107-portable-win-x64.zip'
           $zipSha = (Get-FileHash "dist/$zipName" -Algorithm SHA256).Hash.ToLowerInvariant()
           @(
-            "$sha  baifan-downloader-0.10.103-setup.exe",
+            "$sha  baifan-downloader-0.10.107-setup.exe",
             "$zipSha  $zipName"
           ) | Out-File -Encoding ascii 'dist/SHA256SUMS.txt'
           "Pre-release candidate. EXE and portable ZIP built and startup-smoke-tested; real HTTP/BT downloads and sandbox launch need further acceptance." | Out-File -Encoding utf8 'dist/BUILD_STATUS.txt'
@@ -225,8 +226,8 @@ jobs:
         with:
           name: baifan-windows-installer-candidate
           path: |
-            dist/baifan-downloader-0.10.103-setup.exe
-            dist/baifan-downloader-0.10.103-portable-win-x64.zip
+            dist/baifan-downloader-0.10.107-setup.exe
+            dist/baifan-downloader-0.10.107-portable-win-x64.zip
             dist/SHA256SUMS.txt
             dist/BUILD_STATUS.txt
           retention-days: 14

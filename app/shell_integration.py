@@ -116,6 +116,22 @@ def set_autostart(on: bool) -> bool:
         return False
 
 
+def sync_autostart(settings: dict) -> bool:
+    """启动、改设置时按 settings 同步开机自启；返回是否真的动过注册表。
+
+    只对**打包后的 exe** 生效：源码版 / 测试版（`python run.py`、
+    `.venv\\pythonw.exe run.py`）启动时绝不写 HKCU\\...\\Run。
+    否则跑一次 accept.py 就会把 pythonw 塞进「启动应用」，下次登录
+    自动拉起测试版——2026-11-01 用户实测踩到的就是这个。
+    """
+    if not getattr(sys, "frozen", False):
+        return False
+    want = bool(settings.get("autostart", False))
+    if want != is_autostart():
+        set_autostart(want)
+    return True
+
+
 # ====================== Windows 11 托盘图标常显 ======================
 # Win11 默认把新托盘图标塞进「^」溢出区，微软没有公开 API 让程序自己钉出来。
 # 但系统把「用户是否把这个图标拖出来」记在
