@@ -1,0 +1,36 @@
+name: Correct v0.10.107 preview label (one-off)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/fix-107-release-metadata.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  rename:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Make release title and notes match published preview2 tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG=v0.10.107-preview2
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq '.body' > release-notes.md
+          python - <<'PY'
+          from pathlib import Path
+          f=Path('release-notes.md')
+          s=f.read_text(encoding='utf-8')
+          s=s.replace('预览版 1','预览版 2').replace('Preview 1','Preview 2')
+          f.write_text(s,encoding='utf-8')
+          PY
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --title "白饭下载器 0.10.107 · Windows 安装与绿色版（Preview 2）" \
+            --notes-file release-notes.md
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json name,isPrerelease,assets
