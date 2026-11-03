@@ -60,20 +60,8 @@ jobs:
           landscape=root/'assets/backgrounds/默认横图-示例.jpg'
           assert landscape.is_file()
           assert len(list((root/'assets/backgrounds').glob('*.jpg')))==1
-          # CI's asset count must match this release's horizontal-only policy.
-          source_check=root/'.github/workflows/source-check.yml'
-          content=source_check.read_text(encoding='utf-8')
-          assert '==2' in content
-          source_check.write_text(content.replace('==2','==1'),encoding='utf-8')
-          build=root/'.github/workflows/windows-installer-candidate.yml'
-          content=build.read_text(encoding='utf-8')
-          assert '0.10.103' in content
-          content=content.replace('0.10.103','0.10.107')
-          content=content.replace('      - feat/zero-friction-ai-install\n','      - feat/zero-friction-ai-install\n      - staging/v0.10.107-source\n')
-          build.write_text(content,encoding='utf-8')
-          # Staging transfer artifacts must NOT be part of the eventual PR/merge.
+          # Workflow files are updated separately with the authorized GitHub connector.
           archive.unlink()
-          (root/'.github/workflows/import-v010107.yml').unlink()
           PY
       - name: Validate changed Python and regressions
         shell: bash
