@@ -141,13 +141,18 @@ class ApiContext:
     def verify_gid(self, gid: str) -> dict:
         try:
             st = self.rpc.call("aria2.tellStatus", [gid,
-                ["files", "dir", "status", "seeder", "infoHash", "errorCode"]])
+                ["files", "dir", "status", "seeder", "infoHash", "errorCode",
+                 "completedLength", "totalLength"]])
         except Aria2Error as exc:
             return {"ok": False, "status": "unavailable", "error": "无法读取任务: %s" % exc}
         status = st.get("status")
+        done = int(st.get("completedLength") or 0)
+        total = int(st.get("totalLength") or 0)
         # BT 下载完成后继续做种时，aria2 仍返回 active；seeder=true 代表已完成下载。
         seeding = status == "active" and str(st.get("seeder", "")).lower() == "true"
-        if status != "complete" and not seeding:
+        # 已下完但被暂停/排队时也可校验；只看 finished_at 不够，必须核对当前字节数。
+        paused_done = status in ("paused", "waiting") and total > 0 and done >= total
+        if status != "complete" and not seeding and not paused_done:
             return {"ok": False, "status": "not_ready",
                     "error": "任务尚未完成（%s）" % status}
         report = integrity.check_task(st.get("files") or [], st.get("dir", ""))

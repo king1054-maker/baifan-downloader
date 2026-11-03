@@ -93,6 +93,11 @@ def new_pet():
     不能重复计数），所以测试也要先空跑一次，之后喂的数据才算新发生的事。
     """
     w = PetWindow()
+    # 关掉「每 1.5 秒查前台是不是全屏」的定时器：跑测试时桌面上可能真的有个
+    # 全屏窗口在前台（浏览器全屏看视频之类），定时器会把桌宠藏起来，
+    # 让「全屏期间隐藏」那段先被置成已隐藏、后面的断言反而失败。
+    # 测试里需要全屏判断的地方都是手动调 _watch_fullscreen()，不依赖定时器。
+    w._fs_timer.stop()
     w.show()
     w.update_data([], {})
     return w
@@ -232,6 +237,7 @@ def _run(app) -> int:  # noqa: C901
     set_day(1)
     before = pet_day.count()
     w_restart = PetWindow()
+    w_restart._fs_timer.stop()          # 同上：别让真实桌面的全屏状态干扰测试
     w_restart.show()
     w_restart.update_data([done("早就下完的.mkv"), done("也是旧的.mkv")], {})
     check("程序重启后，列表里已经下完的不会补数一遍",
@@ -474,6 +480,7 @@ def _run(app) -> int:  # noqa: C901
     fake.close()
 
     # ---- 11. 全屏期间隐藏 / 退出后回来 ----
+    w._hidden_by_fullscreen = False     # 归零，只测逻辑，不受当前桌面影响
     w.show()
     petmod._foreground_fullscreen = lambda pid: True
     w._watch_fullscreen()

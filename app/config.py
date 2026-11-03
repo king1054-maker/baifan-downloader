@@ -36,7 +36,7 @@ DEFAULTS: dict[str, Any] = {
     "ai_enabled": False,
     # 界面
     "close_to_tray": True,
-    "autostart": True,             # 默认开机自启
+    "autostart": False,            # 默认不开机自启（测试/源码版更不能写启动项）
     "minimize_to_tray": True,     # 默认最小化就缩托盘（用户的默认期望）
     "tray_promote": True,         # 安装版启动时尝试让托盘图标常显（Win11）
     "notify_on_complete": True,
@@ -58,6 +58,9 @@ DEFAULTS: dict[str, Any] = {
     "bg_interval_min": 3,          # 默认 3 分钟换一张
     "bg_veil": 50,                 # 背景上方白纱浓度 0–100（0=原图，100=接近白底）
     "bg_current": "",              # 当前正在显示的文件名（设为当前背景后不要被设置页随机掉）
+    # 示例背景只铺一次。这个键**必须**在 DEFAULTS 里：load() 会过滤掉不认识的键，
+    # 不在的话每次启动都当"没铺过"，用户删掉的示例图下次启动又被复制回来。
+    "bg_defaults_seeded": False,
     "bg_crops": {},                # 每张图的裁切框 {文件名: [x,y,w,h]}（0–1）
     "bg_anchors": {},              # 旧版裁切锚点，保留兼容
     "theme": "light",
