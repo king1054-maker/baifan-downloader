@@ -35,8 +35,11 @@ jobs:
           $destination = Join-Path $env:RUNNER_TEMP 'BaiFanAI-E2E'
           & powershell.exe -NoProfile -File .\install.ps1 -Mode Portable -Destination $destination
           if ($LASTEXITCODE -ne 0) { throw "Root install.ps1 exited with $LASTEXITCODE" }
-          $exe = Join-Path $destination 'BaiFanDownloader-v0.10.103-preview2/BaiFanDownloader.exe'
-          $aria2 = Join-Path $destination 'BaiFanDownloader-v0.10.103-preview2/_internal/bin/aria2c.exe'
+          # Resolve actual release directory dynamically: no pinned preview tag.
+          $folders = @(Get-ChildItem $destination -Directory | Where-Object { $_.Name -like 'BaiFanDownloader-v*' })
+          if ($folders.Count -ne 1) { throw "Expected one BaiFan release directory, found $($folders.Count)" }
+          $exe = Join-Path $folders[0].FullName 'BaiFanDownloader.exe'
+          $aria2 = Join-Path $folders[0].FullName '_internal/bin/aria2c.exe'
           if (-not (Test-Path $exe) -or -not (Test-Path $aria2)) { throw 'Expected portable app or aria2 missing' }
           Write-Host "Portable deployment succeeded at $exe"
           $ready = $false
