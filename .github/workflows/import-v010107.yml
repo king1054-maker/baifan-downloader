@@ -1,0 +1,92 @@
+name: Import verified 0.10.107 source delta (one-off staging)
+
+on:
+  push:
+    branches:
+      - staging/v0.10.107-source
+    paths:
+      - '.github/workflows/import-v010107.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Verify upload checksum and import allowlisted source files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile,hashlib
+          root = Path.cwd()
+          archive = root/'.ci/staging_v010107_changes.zip'
+          expected = '017b34b131fda7c99330c74d1600ad3921607f10ca8b535a66a6e1ade895fa6a'
+          digest=hashlib.sha256(archive.read_bytes()).hexdigest()
+          assert digest==expected, (digest,expected)
+          expected_files = set('''CHANGELOG.md
+          packaging/version_info.txt
+          packaging/setup.iss
+          tests/test_review_additions.py
+          tests/test_verify_regressions.py
+          tools/testpet.py
+          tools/accept.py
+          app/api_server.py
+          app/config.py
+          app/background.py
+          app/integrity.py
+          app/shell_integration.py
+          app/brand.py
+          app/ui/options_dialog.py
+          app/ui/main_window.py
+          app/ui/models.py'''.splitlines())
+          expected_files={x.strip() for x in expected_files}
+          with zipfile.ZipFile(archive) as z:
+            actual=set(z.namelist())
+            assert actual==expected_files, {'unexpected':sorted(actual-expected_files),'missing':sorted(expected_files-actual)}
+            for name in sorted(actual):
+              target=root/name
+              assert target.parent.exists(),name
+              target.write_bytes(z.read(name))
+              print('Updated',name)
+          portrait=root/'assets/backgrounds/默认竖图-示例.jpg'
+          portrait.unlink(missing_ok=True)
+          landscape=root/'assets/backgrounds/默认横图-示例.jpg'
+          assert landscape.is_file()
+          assert len(list((root/'assets/backgrounds').glob('*.jpg')))==1
+          # CI's asset count must match this release's horizontal-only policy.
+          source_check=root/'.github/workflows/source-check.yml'
+          content=source_check.read_text(encoding='utf-8')
+          assert '==2' in content
+          source_check.write_text(content.replace('==2','==1'),encoding='utf-8')
+          build=root/'.github/workflows/windows-installer-candidate.yml'
+          content=build.read_text(encoding='utf-8')
+          assert '0.10.103' in content
+          content=content.replace('0.10.103','0.10.107')
+          content=content.replace('      - feat/zero-friction-ai-install\n','      - feat/zero-friction-ai-install\n      - staging/v0.10.107-source\n')
+          build.write_text(content,encoding='utf-8')
+          # Staging transfer artifacts must NOT be part of the eventual PR/merge.
+          archive.unlink()
+          (root/'.github/workflows/import-v010107.yml').unlink()
+          PY
+      - name: Validate changed Python and regressions
+        shell: bash
+        run: |
+          python -m compileall -q app run.py tools packaging tests
+          python -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Commit clean source revision back to staging branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --stat
+          git commit -m "feat: merge BaiFan v0.10.107 fixes, tests, horizontal-only background"
+          git push origin HEAD:staging/v0.10.107-source
