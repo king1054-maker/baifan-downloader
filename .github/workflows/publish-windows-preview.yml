@@ -43,7 +43,7 @@ jobs:
         shell: bash
         run: |
           cat > preview-assets/RELEASE_NOTES.md <<'ENDNOTES'
-          ## 白饭下载器 v0.10.107 · Windows 安装与绿色版（预览版 1）
+          ## 白饭下载器 v0.10.107 · Windows 安装与绿色版（预览版 2）
 
           **Windows 10/11 x64，普通用户和 AI 都不需要 Python 或编译源码。**
 
@@ -90,7 +90,7 @@ jobs:
             preview-assets/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" \
             --target "8385634d60aeeeacd0d0eddb59b11905a9dc2c3a" \
-            --title "白饭下载器 0.10.107 · Windows 安装与绿色版（Preview 1）" \
+            --title "白饭下载器 0.10.107 · Windows 安装与绿色版（Preview 2）" \
             --prerelease \
             --notes-file preview-assets/RELEASE_NOTES.md
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url,isPrerelease,assets
