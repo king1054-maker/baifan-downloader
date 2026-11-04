@@ -19,14 +19,14 @@ SOUND_DIR = paths.ASSET_DIR / "sounds"
 # 默认 60：ciallo 那声本身已经压到峰值 55%，再乘 0.6 刚好不吵。
 DEFAULT_VOLUME = 60
 
-# 默认提示音：ciallo 有文件就用它，没有才退回叮咚。
-# 用户明确要的是 ciallo 那一声，不是原来那个"叮咚"，太吵。
-DEFAULT_SOUND = "ciallo.wav"
+# 默认提示音：用户提供的柔和古典完成音；文件缺失才退回叮咚。
+DEFAULT_SOUND = "complete_soft.wav"
 
 # 候选音效。只列**文件真的在**的那些 —— 界面上摆一个点了没声音的选项，
 # 比没有这个选项更让人困惑。
 _SOUND_CANDIDATES = [
-    ("Ciallo～（默认）", "ciallo.wav"),
+    ("完成音·柔和古典（默认）", "complete_soft.wav"),
+    ("Ciallo～", "ciallo.wav"),
     ("Ciallo～（另一个版本）", "ciallo_alt2.wav"),
     ("叮咚", "ding.wav"),
     ("咬一口", "bite.wav"),

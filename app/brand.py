@@ -10,7 +10,7 @@ from __future__ import annotations
 APP_NAME = "白饭下载器"
 APP_NAME_EN = "BaiFan Downloader"
 APP_ID = "BaiFanDownloader"
-APP_VERSION = "0.10.107"
+APP_VERSION = "0.10.108"
 TAGLINE = "一碗一碗，喂饱大肥鱼"
 
 # 状态词：键与 models.TaskRow.state 一致

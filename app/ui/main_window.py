@@ -331,6 +331,11 @@ class MainWindow(QMainWindow):
         self._files_gid = ""
         self._files_rows = 0
         self._files_dirty = False
+        self._files_applying = False
+        self._files_timer = QTimer(self)
+        self._files_timer.setSingleShot(True)
+        self._files_timer.setInterval(500)   # 勾选防抖：连续点只发最后一次
+        self._files_timer.timeout.connect(self._apply_file_selection)
         self._icons = QFileIconProvider()
         self._icon_cache: dict[str, QIcon] = {}
 
@@ -1807,23 +1812,162 @@ class MainWindow(QMainWindow):
         spec = ",".join(str(i) for i in dlg.selected())
         self._change_select(gid, spec, unpause)
 
+    @staticmethod
+    def _parse_spec(spec: str) -> set[int]:
+        """把 "1-3,5,8-10" 解析成 1-based 序号集合。"""
+        out: set[int] = set()
+        for part in str(spec or "").split(","):
+            part = part.strip()
+            if not part:
+                continue
+            if "-" in part:
+                a, _, b = part.partition("-")
+                try:
+                    lo, hi = int(a), int(b)
+                except ValueError:
+                    continue
+                out.update(range(lo, hi + 1))
+            else:
+                try:
+                    out.add(int(part))
+                except ValueError:
+                    pass
+        return out
+
+    @staticmethod
+    def _selected_ids(files: list[dict]) -> set[int]:
+        out: set[int] = set()
+        for i, f in enumerate(files):
+            if str(f.get("selected", "true")).strip().lower() in ("false", "0", "no"):
+                continue
+            out.add(int(f.get("index") or (i + 1)))
+        return out
+
+    def _wait_aria_status(self, gid: str, want: tuple[str, ...],
+                          timeout: float = 3.0) -> str:
+        """等到 aria2 真正进入目标状态，别在 forcePause 后立刻 changeOption。"""
+        rpc = self.engine.rpc
+        if not rpc:
+            return ""
+        end = time.time() + timeout
+        last = ""
+        while time.time() < end:
+            try:
+                st = rpc.call("aria2.tellStatus", [gid, ["status"]])
+                last = str(st.get("status") or "")
+            except Aria2Error:
+                return last
+            if last in want:
+                return last
+            time.sleep(0.08)
+        return last
+
+    def _file_selection_snapshot(self, gid: str) -> dict | None:
+        rpc = self.engine.rpc
+        if not rpc:
+            return None
+        try:
+            return rpc.call("aria2.tellStatus",
+                            [gid, ["files", "dir", "status", "seeder"]])
+        except Aria2Error:
+            return None
+
+    def _reload_files_from_aria2(self, gid: str) -> None:
+        rpc = self.engine.rpc
+        if not rpc or not gid:
+            return
+        try:
+            files = rpc.call("aria2.getFiles", [gid]) or []
+            st = rpc.call("aria2.tellStatus", [gid, ["dir"]])
+        except Aria2Error:
+            return
+        self._files_dirty = False
+        self.btn_apply_files.setEnabled(False)
+        self._fill_files(gid, files, st.get("dir", ""))
+
     def _change_select(self, gid: str, spec: str, unpause: bool) -> bool:
+        """动态改选文件：暂停确认 → changeOption → getFiles 复核 → 恢复运行。
+
+        失败时把旧选择写回 aria2，并把界面恢复到服务端真实状态；
+        不删除任务、不删除已下载文件、不重建种子。
+        """
         rpc = self.engine.rpc
         if not rpc:
             return False
-        try:
-            st = rpc.call("aria2.tellStatus", [gid, ["status"]])
-            status = st.get("status", "")
-            need_pause = status == "active"
-            if need_pause:
-                rpc.call("aria2.forcePause", [gid])
-            rpc.call("aria2.changeOption", [gid, {"select-file": spec}])
-            if need_pause or unpause:
-                rpc.call("aria2.unpause", [gid])
-            return True
-        except Aria2Error as exc:
-            QMessageBox.warning(self, "改不了文件选择", str(exc))
+        want = self._parse_spec(spec)
+        if not want:
+            QMessageBox.information(self, "一个都没勾", "至少勾一个文件，不然就没得吃了。")
             return False
+
+        snapshot = self._file_selection_snapshot(gid)
+        if not snapshot:
+            QMessageBox.warning(self, "改不了文件选择", "读不到任务状态，稍后再试。")
+            return False
+        status = str(snapshot.get("status") or "")
+        files = snapshot.get("files") or []
+        if not files:
+            QMessageBox.information(self, "还没拿到文件列表",
+                                    "磁力任务还在取种子元数据，等文件列表出来再改。")
+            return False
+        if status == "complete":
+            QMessageBox.information(self, "已经下完了",
+                                    "这个任务已经完成，不能再改文件选择。")
+            return False
+        if status == "active" and str(snapshot.get("seeder") or "").lower() == "true":
+            QMessageBox.information(self, "正在做种",
+                                    "任务已经下完并在做种，不能改文件选择。")
+            return False
+
+        old_spec = self._compress(sorted(self._selected_ids(files)))
+        was_active = status == "active"
+        if was_active:
+            try:
+                rpc.call("aria2.forcePause", [gid])
+            except Aria2Error as exc:
+                QMessageBox.warning(self, "暂停失败", "改选前暂停任务失败：%s" % exc)
+                return False
+            now = self._wait_aria_status(gid, ("paused", "waiting"), 3.0)
+            if now not in ("paused", "waiting"):
+                QMessageBox.warning(self, "暂停未完成",
+                                    "任务还没真正暂停（当前 %s），这次不改，避免下载状态错乱。" % now)
+                return False
+        elif status not in ("paused", "waiting"):
+            QMessageBox.warning(self, "改不了文件选择", "当前任务状态不支持改选：%s" % status)
+            return False
+
+        changed = False
+        try:
+            rpc.call("aria2.changeOption", [gid, {"select-file": spec}])
+            actual = rpc.call("aria2.getFiles", [gid]) or []
+            if self._selected_ids(actual) != want:
+                raise Aria2Error("aria2 没有接受新的 select-file（实际 %s）"
+                                 % self._compress(sorted(self._selected_ids(actual))))
+            changed = True
+        except (Aria2Error, RuntimeError) as exc:
+            # 回滚到旧选择；界面也重新读服务端，避免显示“假成功”。
+            try:
+                if old_spec:
+                    rpc.call("aria2.changeOption", [gid, {"select-file": old_spec}])
+            except Aria2Error:
+                pass
+            if was_active or unpause:
+                try:
+                    rpc.call("aria2.unpause", [gid])
+                except Aria2Error:
+                    pass
+            self._reload_files_from_aria2(gid)
+            QMessageBox.warning(self, "改选失败，已恢复原选择", str(exc))
+            return False
+
+        if was_active or unpause:
+            try:
+                rpc.call("aria2.unpause", [gid])
+            except Aria2Error as exc:
+                self._reload_files_from_aria2(gid)
+                QMessageBox.warning(self, "恢复下载失败",
+                                    "文件选择已改，但恢复任务失败：%s" % exc)
+                return changed
+        return changed
 
     def _on_table_clicked(self, index) -> None:
         row = self.model.row_at(index.row())
@@ -3379,6 +3523,8 @@ class MainWindow(QMainWindow):
     # ================= 文件表 =================
     def _fill_files(self, gid: str, files: list[dict], base_dir: str) -> None:
         rebuild = (gid != self._files_gid) or (len(files) != self._files_rows)
+        if rebuild:
+            self._files_timer.stop()
         self._files_gid = gid
         self._files_rows = len(files)
 
@@ -3398,7 +3544,8 @@ class MainWindow(QMainWindow):
                 it = QTableWidgetItem(rel)
                 it.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled
                             | Qt.ItemFlag.ItemIsSelectable)
-                it.setCheckState(Qt.CheckState.Checked if f.get("selected", "true") == "true"
+                it.setCheckState(Qt.CheckState.Checked
+                                 if str(f.get("selected", "true")).lower() == "true"
                                  else Qt.CheckState.Unchecked)
                 it.setData(Qt.ItemDataRole.UserRole, int(f.get("index") or (i + 1)))
                 it.setData(Qt.ItemDataRole.UserRole + 1, total)
@@ -3431,7 +3578,8 @@ class MainWindow(QMainWindow):
                 pc.setText("%.1f%%" % pct)
             it = self.tab_files.item(i, 0)
             if it is not None and not self._files_dirty:
-                want = (Qt.CheckState.Checked if f.get("selected", "true") == "true"
+                want = (Qt.CheckState.Checked
+                        if str(f.get("selected", "true")).lower() == "true"
                         else Qt.CheckState.Unchecked)
                 if it.checkState() != want:
                     it.setCheckState(want)
@@ -3457,12 +3605,22 @@ class MainWindow(QMainWindow):
                 sel += size
         self.lb_files.setText("已勾 %d / %d 个 · %s" % (checked, n, fmt_size(sel)))
 
+    def _schedule_file_apply(self) -> None:
+        """勾选变化后防抖 500ms，再一次性应用，避免连点发一串 RPC。"""
+        gid = self._files_gid
+        row = next((r for r in self.all_rows if r.gid == gid), None) if gid else None
+        if row is not None and (row.status_code == "complete"
+                                or (row.status_code == "active" and row.is_seeder)):
+            return
+        self._files_timer.start()
+
     def _on_file_item_changed(self, item: QTableWidgetItem) -> None:
         if item.column() != 0:
             return
         self._files_dirty = True
         self.btn_apply_files.setEnabled(True)
         self._update_files_sum()
+        self._schedule_file_apply()
 
     def _check_all_files(self, on: bool) -> None:
         self.tab_files.blockSignals(True)
@@ -3474,6 +3632,7 @@ class MainWindow(QMainWindow):
         self._files_dirty = True
         self.btn_apply_files.setEnabled(True)
         self._update_files_sum()
+        self._schedule_file_apply()
 
     def _check_video_files(self) -> None:
         self.tab_files.blockSignals(True)
@@ -3487,6 +3646,7 @@ class MainWindow(QMainWindow):
         self._files_dirty = True
         self.btn_apply_files.setEnabled(True)
         self._update_files_sum()
+        self._schedule_file_apply()
 
     def _invert_files(self) -> None:
         self.tab_files.blockSignals(True)
@@ -3501,6 +3661,7 @@ class MainWindow(QMainWindow):
         self._files_dirty = True
         self.btn_apply_files.setEnabled(True)
         self._update_files_sum()
+        self._schedule_file_apply()
 
     @staticmethod
     def _compress(ids: list[int]) -> str:
@@ -3511,7 +3672,7 @@ class MainWindow(QMainWindow):
             j = i
             while j + 1 < len(ids) and ids[j + 1] == ids[j] + 1:
                 j += 1
-            if j - i >= 2:
+            if j - i >= 1:
                 out.append("%d-%d" % (ids[i], ids[j]))
             else:
                 out.extend(str(x) for x in ids[i:j + 1])
@@ -3519,6 +3680,9 @@ class MainWindow(QMainWindow):
         return ",".join(out)
 
     def _apply_file_selection(self) -> None:
+        if self._files_applying:
+            return
+        self._files_timer.stop()
         gid = self._files_gid
         if not gid:
             return
@@ -3532,23 +3696,40 @@ class MainWindow(QMainWindow):
             return
         row = next((r for r in self.all_rows if r.gid == gid), None)
         if row is not None and row.status_code == "complete":
-            QMessageBox.information(
-                self, "已经下完了",
-                "这个任务已经完成，不能再改文件选择。\n要重新挑，请删掉任务再添一次。")
+            return
+        if row is not None and row.status_code == "active" and row.is_seeder:
             return
         spec = self._compress(ids)
-        was_active = bool(row and row.status_code == "active")
-        if self._change_select(gid, spec, unpause=was_active):
-            self._files_dirty = False
-            self.btn_apply_files.setEnabled(False)
-            sel = sum(int(self.tab_files.item(i, 0).data(Qt.ItemDataRole.UserRole + 1) or 0)
-                      for i in range(self.tab_files.rowCount())
-                      if self.tab_files.item(i, 0) is not None
-                      and self.tab_files.item(i, 0).checkState() == Qt.CheckState.Checked)
-            self.lb_state.setText("已更新：只下 %d 个文件，共 %s" %
-                                  (len(ids), fmt_size(sel)))
-            self._poke()
-            QTimer.singleShot(600, lambda: self._refresh_detail(force=True))
+        self._files_applying = True
+        try:
+            if self._change_select(gid, spec, unpause=False):
+                self._reload_files_from_aria2(gid)
+                self._files_dirty = False
+                self.btn_apply_files.setEnabled(False)
+                sel = 0
+                checked = 0
+                for j in range(self.tab_files.rowCount()):
+                    it = self.tab_files.item(j, 0)
+                    if it is not None and it.checkState() == Qt.CheckState.Checked:
+                        checked += 1
+                        sel += int(it.data(Qt.ItemDataRole.UserRole + 1) or 0)
+                self.lb_state.setText("已更新：只下 %d 个文件，共 %s" %
+                                      (checked, fmt_size(sel)))
+                self._poke()
+                QTimer.singleShot(250, lambda: self._refresh_detail(force=True))
+            else:
+                self._paint_saved_state()
+        finally:
+            self._files_applying = False
+
+    def _paint_saved_state(self) -> None:
+        """失败后把勾选表恢复成 aria2 当前真实选择，别留下假 UI。"""
+        gid = self._files_gid
+        if not gid:
+            return
+        self._reload_files_from_aria2(gid)
+        self._files_dirty = False
+        self.btn_apply_files.setEnabled(False)
 
     def _refresh_detail(self, force: bool = False) -> None:
         now = time.time()
