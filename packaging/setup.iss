@@ -39,7 +39,11 @@ AllowNoIcons=yes
 MinVersion=10.0
 
 [Languages]
+#if FileExists(AddBackslash(SourcePath) + "ChineseSimplified.isl")
+Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
+#else
 Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+#endif
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
