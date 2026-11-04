@@ -44,7 +44,8 @@ DEFAULTS: dict[str, Any] = {
     "notify_sound": True,
     "notify_tray": True,
     "notify_bubble": True,
-    "notify_sound_file": "",       # 空 = 内置 ciallo.wav；可填绝对路径
+    "notify_sound_file": "",       # 空 = 内置完成音 complete_soft.wav；可填绝对路径
+    "sound_default_migrated": False,  # 105 前默认是 ciallo，升级后迁移到新的完成音
     "notify_volume": 60,           # 提示音音量 0–100（0 = 静音）
     "notify_only_when_hidden": False,
     # 打开方式里用户自己挑的程序（按扩展名记）
@@ -84,6 +85,11 @@ def load() -> dict[str, Any]:
             pass
     if not data["download_dir"]:
         data["download_dir"] = str(paths.DL_DIR)
+    # 旧版默认音是 ciallo；升级到新版后只迁移一次，用户后来主动选 ciallo 不再覆盖。
+    if not data.get("sound_default_migrated"):
+        if data.get("notify_sound_file") in ("", "ciallo.wav"):
+            data["notify_sound_file"] = "complete_soft.wav"
+        data["sound_default_migrated"] = True
     return data
 
 

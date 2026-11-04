@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from . import theme
 from .store import MEMO_MAX, normalize_memo
 from .. import brand, intents
+from ..torrent_selection import selected_files, selection_totals
 
 
 # ---------- 格式化 ----------
@@ -88,6 +89,7 @@ class TaskRow:
     verify: bool = False
     ul_done: int = 0
     file_count: int = 1
+    all_file_count: int = 1   # 种子里全部文件数（未勾选也计入）
     finished: float = 0.0
     verify_ok: bool | None = None
     memo: str = ""             # 用户自己写的一句备注（存在 tasks.json，不在 aria2）
@@ -262,6 +264,21 @@ def row_from_aria2(d: dict[str, Any], meta: dict[str, dict] | None = None) -> Ta
     completed = int(d.get("completedLength") or 0)
     if finished_ts and total and completed <= 0:
         completed = total
+
+    # 动态改选文件后，aria2 的 totalLength 在暂停态可能是 0，且 files[]
+    # 仍带着未勾选文件。列表的大小/完成量必须只统计 selected=true 的文件，
+    # 否则 10×100MB 取消 2 个后仍会显示 1000MB。
+    selected = selected_files(files)
+    selected_count, selected_total, selected_done = selection_totals(files)
+    if files and len(selected) != len(files):
+        if selected_total > 0:
+            total = selected_total
+        completed = selected_done
+    elif files and total <= 0 and selected_total > 0:
+        total = selected_total
+        if completed <= 0:
+            completed = selected_done
+    file_count = selected_count or len(files) or 1
     # 磁力链接的「先取种子」阶段：aria2 会先建一个只有元数据的小任务，
     # 下完 .torrent 后自动 create 出新任务，并把新 gid 写进 followedBy。
     # 这个任务从头到尾都不是用户想要的文件，界面上要跟真任务分开。
@@ -285,7 +302,8 @@ def row_from_aria2(d: dict[str, Any], meta: dict[str, dict] | None = None) -> Ta
         is_bt=bool(bt) or d.get("infoHash") is not None,
         verify=bool(d.get("verifyIntegrityPending") == "true"),
         ul_done=int(d.get("uploadLength") or 0),
-        file_count=len(files) or 1,
+        file_count=file_count,
+        all_file_count=len(files) or 1,
         finished=finished_ts,
         memo=str(m.get("memo") or ""),
         is_meta=is_meta,

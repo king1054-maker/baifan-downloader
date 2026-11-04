@@ -747,7 +747,7 @@ class OptionsDialog(QDialog):
         self.chk_only_hidden.setChecked(bool(self.settings.get("notify_only_when_hidden", False)))
         lay.addWidget(self.chk_only_hidden)
 
-        note = QLabel("提示音支持 .wav（推荐）和常见的 .mp3；默认是内置的 Ciallo～。")
+        note = QLabel("提示音支持 .wav（推荐）和常见的 .mp3；默认是内置的完成音。")
         note.setStyleSheet("color:#9AA3AF;")
         note.setWordWrap(True)
         lay.addWidget(note)
