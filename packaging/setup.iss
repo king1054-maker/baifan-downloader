@@ -4,7 +4,7 @@
 
 #define AppName        "白饭下载器"
 #define AppNameEn      "BaiFan Downloader"
-#define AppVersion     "0.10.107"
+#define AppVersion     "0.10.108"
 #define AppPublisher   "白饭下载器"
 #define AppExe         "BaiFanDownloader.exe"
 #define AppId          "{{8F3A1C2E-5B7D-4E9A-9C11-B1A2F3D4E5F6}"
@@ -39,7 +39,7 @@ AllowNoIcons=yes
 MinVersion=10.0
 
 [Languages]
-Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
+Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]

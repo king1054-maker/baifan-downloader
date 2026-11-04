@@ -11,6 +11,7 @@ from pathlib import Path
 from PySide6.QtCore import QThread, Signal
 
 from ..rpc import Aria2Error, Aria2Rpc
+from ..torrent_selection import change_selection
 from .models import TaskRow, row_from_aria2
 from .store import TaskMetaStore
 
@@ -94,3 +95,25 @@ class PollWorker(QThread):
             while self._running and not self._wake and time.time() < deadline:
                 time.sleep(0.05)
             self._wake = False
+
+
+class FileSelectWorker(QThread):
+    """在工作线程里完成 暂停→changeOption→getFiles→unpause。"""
+
+    done = Signal(bool, str)
+
+    def __init__(self, rpc: Aria2Rpc, gid: str, spec: str,
+                 unpause: bool = False, parent=None):
+        super().__init__(parent)
+        self.rpc = rpc
+        self.gid = gid
+        self.spec = spec
+        self.unpause = unpause
+
+    def run(self) -> None:  # noqa: D102
+        try:
+            res = change_selection(self.rpc, self.gid, self.spec, self.unpause)
+            self.done.emit(res.ok, res.error)
+        except Exception as exc:  # noqa: BLE001
+            self.done.emit(False, "改选线程异常：%s" % exc)
+

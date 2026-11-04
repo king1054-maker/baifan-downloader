@@ -1,18 +1,18 @@
-"""动态改选的控制流测试：暂停确认、成功恢复、失败回滚。"""
+"""动态改选纯控制流测试（不依赖 Qt）：暂停确认、成功恢复、失败回滚、暂停超时补偿。"""
 from __future__ import annotations
 
 import unittest
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.rpc import Aria2Error
-from app.ui.main_window import MainWindow
+from app.torrent_selection import change_selection
 
 
 class FakeRpc:
-    def __init__(self, status="paused", fail_change=False):
+    def __init__(self, status="paused", fail_change=False, pause_stuck=False):
         self.status = status
         self.fail_change = fail_change
+        self.pause_stuck = pause_stuck
         self.calls = []
         self.files = [
             {"index": str(i), "path": "E:/dl/f%d.mkv" % i,
@@ -31,7 +31,8 @@ class FakeRpc:
                     "files": [dict(f) for f in self.files],
                     "dir": "E:/dl"}
         if method == "aria2.forcePause":
-            self.status = "paused"
+            if not self.pause_stuck:
+                self.status = "paused"
             return "OK"
         if method == "aria2.changeOption":
             if self.fail_change:
@@ -55,19 +56,11 @@ class FakeRpc:
         raise AssertionError(method)
 
 
-def make_win(rpc):
-    win = MainWindow.__new__(MainWindow)
-    win.engine = SimpleNamespace(rpc=rpc)
-    win._reload_files_from_aria2 = lambda gid: None
-    return win
-
-
-class ChangeSelectTests(unittest.TestCase):
+class ChangeSelectionTests(unittest.TestCase):
     def test_active_task_pauses_waits_changes_verifies_and_resumes(self):
         rpc = FakeRpc("active")
-        win = make_win(rpc)
-        with patch("app.ui.main_window.QMessageBox.warning"):
-            self.assertTrue(win._change_select("g", "1-8", unpause=False))
+        res = change_selection(rpc, "g", "1-8")
+        self.assertTrue(res.ok, res.error)
         methods = [m for m, _ in rpc.calls]
         self.assertIn("aria2.forcePause", methods)
         self.assertIn("aria2.changeOption", methods)
@@ -77,25 +70,29 @@ class ChangeSelectTests(unittest.TestCase):
 
     def test_paused_task_changes_without_pausing_or_resuming(self):
         rpc = FakeRpc("paused")
-        win = make_win(rpc)
-        with patch("app.ui.main_window.QMessageBox.warning"):
-            self.assertTrue(win._change_select("g", "1-9", unpause=False))
+        self.assertTrue(change_selection(rpc, "g", "1-9").ok)
         methods = [m for m, _ in rpc.calls]
         self.assertNotIn("aria2.forcePause", methods)
         self.assertNotIn("aria2.unpause", methods)
 
     def test_rpc_failure_restores_old_selection(self):
         rpc = FakeRpc("paused", fail_change=True)
-        win = make_win(rpc)
-        reloaded = []
-        win._reload_files_from_aria2 = lambda gid: reloaded.append(gid)
-        with patch("app.ui.main_window.QMessageBox.warning") as warn:
-            self.assertFalse(win._change_select("g", "1-8", unpause=False))
-        self.assertTrue(reloaded)
-        self.assertTrue(warn.called)
-        # 失败后至少尝试把旧选择写回；旧选择是全选 1-10
+        res = change_selection(rpc, "g", "1-8")
+        self.assertFalse(res.ok)
+        self.assertIn("失败", res.error)
         changes = [c for c in rpc.calls if c[0] == "aria2.changeOption"]
-        self.assertTrue(any(c[1][1].get("select-file") for c in changes))
+        self.assertGreaterEqual(len(changes), 2)
+        self.assertTrue(any(c[1][1].get("select-file") == "1-10" for c in changes))
+
+    def test_pause_timeout_compensates_by_resuming(self):
+        rpc = FakeRpc("active", pause_stuck=True)
+        with patch("app.torrent_selection.wait_status", return_value="active"):
+            res = change_selection(rpc, "g", "1-8")
+        self.assertFalse(res.ok)
+        self.assertIn("没有确认暂停", res.error)
+        methods = [m for m, _ in rpc.calls]
+        self.assertIn("aria2.unpause", methods)
+        self.assertNotIn("aria2.changeOption", methods)
 
 
 if __name__ == "__main__":
