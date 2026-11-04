@@ -154,7 +154,6 @@ def main() -> int:
         "立绘 ciallo.png": [OUT_DIR / "_internal" / "assets" / "pet" / "ciallo.png"],
         "立绘 tease.png": [OUT_DIR / "_internal" / "assets" / "pet" / "tease.png"],
         "换图素材库": [OUT_DIR / "_internal" / "assets" / "pet" / "library" / "01 待命-ciallo.png"],
-        "音效 ciallo.wav": [OUT_DIR / "_internal" / "assets" / "sounds" / "ciallo.wav"],
         "完成音 complete_soft.wav": [OUT_DIR / "_internal" / "assets" / "sounds" / "complete_soft.wav"],
         "音效 ding.wav": [OUT_DIR / "_internal" / "assets" / "sounds" / "ding.wav"],
         "配置模板": [OUT_DIR / "_internal" / "assets" / "conf" / "aria2.conf.tpl"],
