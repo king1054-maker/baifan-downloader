@@ -126,13 +126,11 @@ def main() -> int:
 
     settings = config.load()
 
-    # 默认开机自启：注册表里没有就补上；用户明确关掉的就清掉。
-    # 只写 HKCU，不需要管理员。
+    # 开机自启：只有打包版才同步注册表；源码/测试版启动绝不写启动项。
+    # （跑 accept.py 或 python run.py 不会再把 pythonw 塞进「启动应用」）
     try:
         from app import shell_integration
-        want = bool(settings.get("autostart", True))
-        if want != shell_integration.is_autostart():
-            shell_integration.set_autostart(want)
+        shell_integration.sync_autostart(settings)
     except Exception:  # noqa: BLE001
         pass
 
